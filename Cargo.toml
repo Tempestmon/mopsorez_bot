@@ -1,0 +1,12 @@
+[package]
+name = "mopsorez_bot"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread"] }
+serenity = { version = "0.12.0", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "framework", "standard_framework"] }
+rand = "0.8.5"
+poise = "0.5.7"
