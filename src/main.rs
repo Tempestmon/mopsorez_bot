@@ -1,5 +1,3 @@
-mod user_phrases;
-
 use std::env;
 use serenity::{async_trait};
 use serenity::model::channel::Message;
