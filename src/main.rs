@@ -1,11 +1,15 @@
+mod ping;
+mod rule34;
+mod helpers;
+
 use std::env;
 use serenity::{async_trait};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use rand::distributions::{Distribution, Uniform};
-use serde::{Deserialize, Serialize};
-use serde_json::Error;
+use helpers::send_discord_message;
+use rule34::find_image;
 
 struct Handler;
 
@@ -23,50 +27,37 @@ async fn is_answer_needed(prob_number: i8) -> bool {
     false
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-struct Rule34Model {
-    file_url: String,
-}
+
 
 
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.content.contains("!rule34") {
-            let message_split: Vec<&str> = msg.content.as_str().split(" ").collect();
-            if message_split.len() > 1 {
-                let search_tag = message_split.get(1).expect("Could get shit");
-                let request = reqwest::get(format!("https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&limit=50&tags={search_tag}")).await.expect("Error trying to call rule34");
-                let image = request.text().await.expect("Got no image");
-                let model: Result<Vec<Rule34Model>, Error> = serde_json::from_str(image.as_str());
-                match model {
-                    Ok(model) => {
-                        let random = get_random_number(model.len() as i8).await - 1;
-                        println!("{model:#?}");
-                        let url = model.get(random as usize).expect("No model was found").file_url.clone();
-                        Self::send_discord_message(&ctx, &msg, url.as_str()).await;
-                    }
-                    Err(_) => {
-                        Self::send_discord_message(&ctx, &msg, "Я такую хуйню найти не могу").await;
-                    }
-                }
-            } else {
-                Self::send_discord_message(&ctx, &msg, "Введи тег для поиска, придурок").await
-            }
+            find_image(&ctx, &msg).await;
         }
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
             match bot_message {
                 Some(message) => {
-                    Self::send_discord_message(&ctx, &msg, message).await;
+                    send_discord_message(&ctx, &msg, message).await;
                 }
                 None => {}
             }
         }
     }
-    async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        println!("{} has connected!", ready.user.name);
 
+        let guild = ready.guilds[0];
+        assert_eq!(guild.unavailable, true);
+        let guild_id = guild.id;
+
+        guild_id.set_commands(&ctx.http, vec![
+            ping::register(),
+        ])
+            .await
+            .expect("failed to create application command");
     }
 }
 
@@ -108,12 +99,6 @@ impl Handler {
             }
         };
         bot_message
-    }
-
-    async fn send_discord_message(ctx: &Context, msg: &Message, message: &str) {
-        if let Err(why) = msg.channel_id.say(&ctx.http, message).await {
-            println!("Error sending message: {why:?}");
-        }
     }
 }
 
