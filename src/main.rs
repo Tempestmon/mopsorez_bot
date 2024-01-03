@@ -1,5 +1,4 @@
-mod ping;
-mod rule34;
+mod commands;
 mod helpers;
 
 use std::env;
@@ -8,34 +7,35 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use rand::distributions::{Distribution, Uniform};
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use helpers::send_discord_message;
-use rule34::find_image;
+use commands::rule34;
+use commands::ping;
+use serenity::model::application::{Interaction};
 
 struct Handler;
 
-async fn get_random_number(number: i8) -> i8 {
+fn get_random_number(number: i8) -> i8 {
     let mut rng = rand::thread_rng();
     let die = Uniform::from(1..number + 1);
     die.sample(&mut rng)
 }
 
-async fn is_answer_needed(prob_number: i8) -> bool {
-    let throw = get_random_number(prob_number).await;
+fn is_answer_needed(prob_number: i8) -> bool {
+    let throw = get_random_number(prob_number);
     if throw == prob_number {
-        return true
+        return true;
     }
     false
 }
 
 
-
-
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content.contains("!rule34") {
-            find_image(&ctx, &msg).await;
-        }
+        // if msg.content.contains("!rule34") {
+        //     find_image(&ctx, &msg).await;
+        // }
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
             match bot_message {
@@ -46,6 +46,7 @@ impl EventHandler for Handler {
             }
         }
     }
+
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} has connected!", ready.user.name);
 
@@ -55,9 +56,27 @@ impl EventHandler for Handler {
 
         guild_id.set_commands(&ctx.http, vec![
             ping::register(),
-        ])
-            .await
-            .expect("failed to create application command");
+            rule34::register().await,
+        ]).await
+          .expect("failed to create application command");
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::Command(command) = interaction {
+            let content = match command.data.name.as_str() {
+                "ping" => Some(ping::run(&command.data.options())),
+                "rule34" => Some(rule34::find_image(&command.data.options()).await),
+                _ => Some("not implemented :(".to_string()),
+            };
+
+            if let Some(content) = content {
+                let data = CreateInteractionResponseMessage::new().content(content);
+                let builder = CreateInteractionResponse::Message(data);
+                if let Err(why) = command.create_response(&ctx.http, builder).await {
+                    println!("Cannot respond to slash command: {why}");
+                }
+            }
+        }
     }
 }
 
@@ -76,7 +95,7 @@ impl Handler {
             _ => {
                 match msg.author.name.as_str() {
                     "_fatpug_" => {
-                        match is_answer_needed(3).await {
+                        match is_answer_needed(3) {
                             true => {
                                 Some("Заткнись, мопс")
                             }
@@ -86,7 +105,7 @@ impl Handler {
                         }
                     }
                     _ => {
-                        match is_answer_needed(6).await {
+                        match is_answer_needed(6) {
                             true => {
                                 Some("Помолчи, заебал")
                             }
