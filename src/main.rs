@@ -9,8 +9,7 @@ use serenity::prelude::*;
 use rand::distributions::{Distribution, Uniform};
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use helpers::send_discord_message;
-use commands::rule34;
-use commands::ping;
+use commands::{rule34, play, delete, ping};
 use serenity::model::application::{Interaction};
 
 struct Handler;
@@ -33,9 +32,7 @@ fn is_answer_needed(prob_number: i8) -> bool {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        // if msg.content.contains("!rule34") {
-        //     find_image(&ctx, &msg).await;
-        // }
+        println!("{ctx:#?}");
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
             match bot_message {
@@ -56,7 +53,9 @@ impl EventHandler for Handler {
 
         guild_id.set_commands(&ctx.http, vec![
             ping::register(),
-            rule34::register().await,
+            rule34::register(),
+            play::register(),
+            delete::register(),
         ]).await
           .expect("failed to create application command");
     }
@@ -66,6 +65,8 @@ impl EventHandler for Handler {
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run(&command.data.options())),
                 "rule34" => Some(rule34::find_image(&command.data.options()).await),
+                "play" => Some(play::play(&ctx.clone(), &command.data.guild_id.unwrap(), &command.user).await),
+                "delete" => Some(delete::delete_messages(&command.data.options(), ctx.clone()).await),
                 _ => Some("not implemented :(".to_string()),
             };
 

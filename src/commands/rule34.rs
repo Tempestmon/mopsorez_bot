@@ -52,7 +52,7 @@ pub async fn find_image(options: &[ResolvedOption<'_>]) -> String {
     String::from(images.choose(&mut rand::thread_rng()).unwrap().file_url.clone())
 }
 
-pub async fn register() -> CreateCommand {
+pub fn register() -> CreateCommand {
     CreateCommand::new("rule34")
         .description("Поискать красивые картинки")
         .add_option(CreateCommandOption::new(CommandOptionType::String,
