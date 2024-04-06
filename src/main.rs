@@ -7,6 +7,7 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use rand::distributions::{Distribution, Uniform};
+use serenity::all::ReactionType;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use helpers::send_discord_message;
 use commands::{rule34, play, delete, ping};
@@ -32,7 +33,14 @@ fn is_answer_needed(prob_number: i8) -> bool {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        println!("{ctx:#?}");
+        println!("Got message {msg:#?}");
+        if !msg.author.bot && msg.author.name != "tempestmon"  {
+            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned())).await;
+            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇦".to_owned())).await;
+            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇾".to_owned())).await;
+            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🏳️‍🌈".to_owned())).await;
+            println!("Marking gay");
+        }
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
             match bot_message {
