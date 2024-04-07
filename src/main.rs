@@ -72,15 +72,13 @@ impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
             let guild_id = Arc::new(command.guild_id.unwrap());
-            let user = command.user.clone();
-            let cache = Arc::new(ctx.cache.clone());
             let channel_id = command.channel_id;
 
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
                 "rule34" => Some(rule34::find_image(&command.data.options()).await),
                 "play" => Some(play::play(&ctx.clone(), &command.data.guild_id.unwrap(), &command.user).await),
-                "delete" => Some(delete::delete_messages(&command.data.options(), &ctx.clone(), &guild_id, &user, &channel_id).await),
+                "delete" => Some(delete::delete_messages(&command.data.options(), &ctx.clone(), &guild_id, &channel_id).await),
                 _ => Some("not implemented :(".to_string()),
             };
 
