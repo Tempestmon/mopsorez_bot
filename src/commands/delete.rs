@@ -1,7 +1,6 @@
-use std::sync::Arc;
-use serenity::all::{ChannelId, CommandOptionType, Context, CreateCommand, CreateCommandOption, GetMessages, GuildId, ResolvedOption, ResolvedValue, User};
+use serenity::all::{ChannelId, CommandOptionType, Context, CreateCommand, CreateCommandOption, GetMessages, GuildId, ResolvedOption, ResolvedValue};
 
-pub async fn delete_messages(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: &Arc<GuildId>, channel_id: &ChannelId) -> String {
+pub async fn delete_messages(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: GuildId, channel_id: &ChannelId) -> String {
     let number = options.first().expect("No number was provided").clone().value;
     let number = match number {
         ResolvedValue::Integer(e) => {e}
@@ -29,7 +28,7 @@ pub async fn delete_messages(options: &[ResolvedOption<'_>], ctx: &Context, guil
     channel.delete_messages(&ctx.http, messages.into_iter())
         .await
         .expect("Got an error deleting messages");
-    format!("Я удалил последние {number} сообщений")
+    format!("Сообщения удалены, их количество: {number}")
 }
 
 pub fn register() -> CreateCommand {

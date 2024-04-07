@@ -2,7 +2,6 @@ mod commands;
 mod helpers;
 
 use std::env;
-use std::sync::Arc;
 use serenity::{async_trait};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
@@ -11,8 +10,17 @@ use rand::distributions::{Distribution, Uniform};
 use serenity::all::ReactionType;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use helpers::send_discord_message;
-use commands::{rule34, play, delete, ping};
+use commands::{rule34, voice, delete, ping};
 use serenity::model::application::{Interaction};
+use songbird::SerenityInit;
+use reqwest::Client as HttpClient;
+
+struct HttpKey;
+
+impl TypeMapKey for HttpKey {
+    type Value = HttpClient;
+}
+
 
 struct Handler;
 
@@ -34,7 +42,6 @@ fn is_answer_needed(prob_number: i8) -> bool {
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        println!("Got message {msg:#?}");
         if !msg.author.bot && msg.author.name != "tempestmon"  {
             let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned())).await;
             let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇦".to_owned())).await;
@@ -63,7 +70,9 @@ impl EventHandler for Handler {
         guild_id.set_commands(&ctx.http, vec![
             ping::register(),
             rule34::register(),
-            play::register(),
+            voice::register_play(),
+            voice::register_join(),
+            voice::register_phrase(),
             delete::register(),
         ]).await
           .expect("failed to create application command");
@@ -71,14 +80,17 @@ impl EventHandler for Handler {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            let guild_id = Arc::new(command.guild_id.unwrap());
             let channel_id = command.channel_id;
+            let guild_id = command.data.guild_id.unwrap();
+            let command_options = &command.data.options();
 
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
-                "rule34" => Some(rule34::find_image(&command.data.options()).await),
-                "play" => Some(play::play(&ctx.clone(), &command.data.guild_id.unwrap(), &command.user).await),
-                "delete" => Some(delete::delete_messages(&command.data.options(), &ctx.clone(), &guild_id, &channel_id).await),
+                "rule34" => Some(rule34::find_image(command_options).await),
+                "join" => Some(voice::join(&ctx.clone(), command.data.guild_id.unwrap(), &command.user).await),
+                "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
+                "phrase" => Some(voice::phrase(&ctx.clone(), guild_id).await),
+                "delete" => Some(delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id).await),
                 _ => Some("not implemented :(".to_string()),
             };
 
@@ -141,6 +153,8 @@ async fn main() {
     let mut client =
         Client::builder(&token, GatewayIntents::all())
             .event_handler(Handler)
+            .register_songbird()
+            .type_map_insert::<HttpKey>(HttpClient::new())
             .await
             .expect("Err creating client");
     if let Err(why) = client.start().await {
