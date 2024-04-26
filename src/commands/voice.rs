@@ -1,14 +1,17 @@
+use crate::HttpKey;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+use serenity::all::{
+    CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue,
+    User,
+};
+use serenity::async_trait;
+use serenity::prelude::Context;
+use songbird::events::TrackEvent;
+use songbird::input::{File, Input, YoutubeDl};
+use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
-use rand::seq::SliceRandom;
-use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue, User};
-use serenity::prelude::{Context, TypeMapKey};
-use rand::thread_rng;
-use serenity::async_trait;
-use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
-use songbird::events::TrackEvent;
-use songbird::input::YoutubeDl;
-use crate::HttpKey;
 
 struct TrackErrorNotifier;
 
@@ -41,21 +44,15 @@ fn get_music_file() -> PathBuf {
     random_file
 }
 
-
 pub async fn join(ctx: &Context, guild_id: GuildId, user: &User) -> String {
-    let guild = guild_id
-        .to_guild_cached(&ctx.cache)
-        .unwrap()
-        .clone();
+    let guild = guild_id.to_guild_cached(&ctx.cache).unwrap().clone();
     let voice_channel_id = guild
         .voice_states
         .get(&user.id)
         .and_then(|voice_state| voice_state.channel_id);
     let voice_channel_id = match voice_channel_id {
-        Some(v) => { v }
-        None => {
-            return "Ты должен быть в голосовом канале".to_string()
-        }
+        Some(v) => v,
+        None => return "Ты должен быть в голосовом канале".to_string(),
     };
     let manager = songbird::get(ctx)
         .await
@@ -69,10 +66,14 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user: &User) -> String {
 }
 
 pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: GuildId) -> String {
-    let url = options.first().expect("Haven't found any urls").clone().value;
+    let url = options
+        .first()
+        .expect("Haven't found any urls")
+        .clone()
+        .value;
     let url = match url {
-        ResolvedValue::String(e) => {e.to_string()}
-        _ => {"Nothing".to_string()}
+        ResolvedValue::String(e) => e.to_string(),
+        _ => "Nothing".to_string(),
     };
     let search = !url.starts_with("http");
 
@@ -111,9 +112,13 @@ pub async fn phrase(ctx: &Context, guild_id: GuildId) -> String {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        // let src = get_music_file();
-        let src = songbird::input::File::new(Path::new("/Users/mihailsmirnov/Downloads/Telegram Desktop/KINGPIN_rus/чуваки/ааа а все в порядке все в порядке.wav"));
-        let _ = handler.play_input(src.clone().into());
+        let file_path = File::new(Path::new(
+            "/Users/mihailsmirnov/Downloads/sample-file-4.mp3",
+        ));
+        let src = Input::from(file_path);
+        // let src = Track::from(src);
+        let result = handler.play_input(src);
+        println!("{result:#?}");
         "Играем".to_string()
     } else {
         "Я не в канале".to_string()
@@ -122,21 +127,17 @@ pub async fn phrase(ctx: &Context, guild_id: GuildId) -> String {
 
 pub fn register_play() -> CreateCommand {
     CreateCommand::new("play")
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::String,
-            "url",
-            "Ссылка на видео"
-        ).required(true)
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "url", "Ссылка на видео")
+                .required(true),
         )
         .description("Проиграть с ютуба")
 }
 
 pub fn register_join() -> CreateCommand {
-    CreateCommand::new("join")
-        .description("Присоединиться к чату")
+    CreateCommand::new("join").description("Присоединиться к чату")
 }
 
 pub fn register_phrase() -> CreateCommand {
-    CreateCommand::new("phrase")
-        .description("Сказать рандомную фразу")
+    CreateCommand::new("phrase").description("Сказать рандомную фразу")
 }

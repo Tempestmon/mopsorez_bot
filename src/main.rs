@@ -1,26 +1,25 @@
 mod commands;
 mod helpers;
 
-use std::env;
-use serenity::{async_trait};
+use commands::{delete, ping, rule34, voice};
+use helpers::send_discord_message;
+use rand::distributions::{Distribution, Uniform};
+use reqwest::Client as HttpClient;
+use serenity::all::ReactionType;
+use serenity::async_trait;
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
+use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use rand::distributions::{Distribution, Uniform};
-use serenity::all::ReactionType;
-use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
-use helpers::send_discord_message;
-use commands::{rule34, voice, delete, ping};
-use serenity::model::application::{Interaction};
 use songbird::SerenityInit;
-use reqwest::Client as HttpClient;
+use std::env;
 
 struct HttpKey;
 
 impl TypeMapKey for HttpKey {
     type Value = HttpClient;
 }
-
 
 struct Handler;
 
@@ -38,15 +37,22 @@ fn is_answer_needed(prob_number: i8) -> bool {
     false
 }
 
-
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        if !msg.author.bot && msg.author.name != "tempestmon"  {
-            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned())).await;
-            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇦".to_owned())).await;
-            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🇾".to_owned())).await;
-            let _ = msg.react(ctx.clone().http, ReactionType::Unicode("🏳️‍🌈".to_owned())).await;
+        if !msg.author.bot && msg.author.name != "tempestmon" {
+            let _ = msg
+                .react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned()))
+                .await;
+            let _ = msg
+                .react(ctx.clone().http, ReactionType::Unicode("🇦".to_owned()))
+                .await;
+            let _ = msg
+                .react(ctx.clone().http, ReactionType::Unicode("🇾".to_owned()))
+                .await;
+            let _ = msg
+                .react(ctx.clone().http, ReactionType::Unicode("🏳️‍🌈".to_owned()))
+                .await;
             println!("Marking gay");
         }
         if !msg.author.bot {
@@ -67,15 +73,20 @@ impl EventHandler for Handler {
         assert_eq!(guild.unavailable, true);
         let guild_id = guild.id;
 
-        guild_id.set_commands(&ctx.http, vec![
-            ping::register(),
-            rule34::register(),
-            voice::register_play(),
-            voice::register_join(),
-            voice::register_phrase(),
-            delete::register(),
-        ]).await
-          .expect("failed to create application command");
+        guild_id
+            .set_commands(
+                &ctx.http,
+                vec![
+                    ping::register(),
+                    rule34::register(),
+                    voice::register_play(),
+                    voice::register_join(),
+                    voice::register_phrase(),
+                    delete::register(),
+                ],
+            )
+            .await
+            .expect("failed to create application command");
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -87,10 +98,15 @@ impl EventHandler for Handler {
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
                 "rule34" => Some(rule34::find_image(command_options).await),
-                "join" => Some(voice::join(&ctx.clone(), command.data.guild_id.unwrap(), &command.user).await),
+                "join" => Some(
+                    voice::join(&ctx.clone(), command.data.guild_id.unwrap(), &command.user).await,
+                ),
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
                 "phrase" => Some(voice::phrase(&ctx.clone(), guild_id).await),
-                "delete" => Some(delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id).await),
+                "delete" => Some(
+                    delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id)
+                        .await,
+                ),
                 _ => Some("not implemented :(".to_string()),
             };
 
@@ -108,55 +124,33 @@ impl EventHandler for Handler {
 impl Handler {
     async fn get_answer_after_user_message(msg: &Message) -> Option<&str> {
         let bot_message = match msg.content.as_str() {
-            "да" | "Да" | "Da" | "da" => {
-                Some("Пидора слова")
-            }
-            "нет" | "Нет" | "Net" | "net" => {
-                Some("Пидора ответ")
-            }
-            "Мопсы пидоры?" | "Мопсы чурки?" => {
-                Some("Да")
-            }
-            _ => {
-                match msg.author.name.as_str() {
-                    "_fatpug_" => {
-                        match is_answer_needed(3) {
-                            true => {
-                                Some("Заткнись, мопс")
-                            }
-                            false => {
-                                None
-                            }
-                        }
-                    }
-                    _ => {
-                        match is_answer_needed(6) {
-                            true => {
-                                Some("Помолчи, заебал")
-                            }
-                            false => {
-                                None
-                            }
-                        }
-                    }
-                }
-            }
+            "да" | "Да" | "Da" | "da" => Some("Пидора слова"),
+            "нет" | "Нет" | "Net" | "net" => Some("Пидора ответ"),
+            "Мопсы пидоры?" | "Мопсы чурки?" => Some("Да"),
+            _ => match msg.author.name.as_str() {
+                "_fatpug_" => match is_answer_needed(3) {
+                    true => Some("Заткнись, мопс"),
+                    false => None,
+                },
+                _ => match is_answer_needed(6) {
+                    true => Some("Помолчи, заебал"),
+                    false => None,
+                },
+            },
         };
         bot_message
     }
 }
 
-
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    let mut client =
-        Client::builder(&token, GatewayIntents::all())
-            .event_handler(Handler)
-            .register_songbird()
-            .type_map_insert::<HttpKey>(HttpClient::new())
-            .await
-            .expect("Err creating client");
+    let mut client = Client::builder(&token, GatewayIntents::all())
+        .event_handler(Handler)
+        .register_songbird()
+        .type_map_insert::<HttpKey>(HttpClient::new())
+        .await
+        .expect("Err creating client");
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");
     }
