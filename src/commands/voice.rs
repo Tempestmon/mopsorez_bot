@@ -1,3 +1,4 @@
+use std::env;
 use crate::HttpKey;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -11,7 +12,7 @@ use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
 use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::fs::read_dir;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 
 struct TrackErrorNotifier;
 
@@ -33,7 +34,7 @@ impl VoiceEventHandler for TrackErrorNotifier {
 }
 
 fn get_music_file() -> PathBuf {
-    let music_directory = "~/Downloads/Telegram Desktop/KINGPIN_rus/чуваки";
+    let music_directory = env::var("PHRASES_DIRECTORY").expect("Expected a directory in the environment");
     let mut music_files: Vec<_> = read_dir(music_directory)
         .expect("Failed to read music directory")
         .map(|entry| entry.unwrap().path())
@@ -112,9 +113,9 @@ pub async fn phrase(ctx: &Context, guild_id: GuildId) -> String {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        let file_path = File::new(Path::new(
-            "/Users/mihailsmirnov/Downloads/sample-file-4.mp3",
-        ));
+        let random_file = get_music_file();
+        println!("{random_file:?}");
+        let file_path = File::new(random_file);
         let src = Input::from(file_path);
         // let src = Track::from(src);
         let result = handler.play_input(src);

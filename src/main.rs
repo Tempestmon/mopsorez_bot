@@ -144,7 +144,7 @@ impl Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
     let mut client = Client::builder(&token, GatewayIntents::all())
         .event_handler(Handler)
         .register_songbird()
