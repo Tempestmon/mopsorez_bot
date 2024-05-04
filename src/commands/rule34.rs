@@ -47,7 +47,7 @@ pub async fn find_image(options: &[ResolvedOption<'_>]) -> String {
         _ => Err("Not a string"),
     };
     println!("tag is {tag:?}");
-    let request_parameters = Rule34Parameters::new(true, 50, vec![tag.unwrap().to_string()]);
+    let request_parameters = Rule34Parameters::new(true, 50, vec![tag.expect("No tags found").to_string()]);
     let response = request_parameters
         .make_request()
         .await
@@ -61,7 +61,7 @@ pub async fn find_image(options: &[ResolvedOption<'_>]) -> String {
     String::from(
         images
             .choose(&mut rand::thread_rng())
-            .unwrap()
+            .expect("Couldn't choose random")
             .file_url
             .clone(),
     )

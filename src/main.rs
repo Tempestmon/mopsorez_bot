@@ -5,15 +5,20 @@ use commands::{delete, ping, rule34, voice};
 use helpers::send_discord_message;
 use rand::distributions::{Distribution, Uniform};
 use reqwest::Client as HttpClient;
-use serenity::all::ReactionType;
+use serenity::model::channel::ReactionType;
+use serenity::model::voice::VoiceState;
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use songbird::SerenityInit;
+use songbird::{SerenityInit, TrackEvent};
 use std::env;
+use std::path::PathBuf;
+use std::time::Duration;
+use tokio::time::sleep;
+use crate::commands::voice::{play_file};
 
 struct HttpKey;
 
@@ -89,20 +94,57 @@ impl EventHandler for Handler {
             .expect("failed to create application command");
     }
 
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+        let cache = &ctx.cache;
+        let new_channel = new.channel_id.expect("No ChannelId for new channel").to_channel_cached(&cache).expect("Cannot get cached channel").clone();
+        let members = new_channel.members(&cache).expect("Couldn't get members in new channel");
+        if new.user_id.to_user(&ctx.http).await.unwrap().bot {
+            return;
+        }
+        let new_members_count = members.len();
+        let state = new.clone();
+        if state.self_mute {
+            play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("OTVET").expect("Couldn't play file").to_string())).await;
+        }
+
+        match old {
+            None => {
+                let manager = songbird::get(&ctx)
+                    .await
+                    .expect("Cannot register songbird manager")
+                    .clone();
+                if let Ok(handler_lock) = manager.join(new.guild_id.unwrap(), new.channel_id.unwrap()).await {
+                    let mut handler = handler_lock.lock().await;
+                    handler.add_global_event(TrackEvent::Error.into(), voice::TrackErrorNotifier);
+                }
+                sleep(Duration::new(1, 0)).await;
+                play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("HOOLI").expect("Couldn't play file").to_string())).await;
+            }
+            Some(old_channel) => {
+                let channel = old_channel.channel_id.unwrap().to_channel_cached(&cache).unwrap().clone();
+                let old_members = channel.members(&cache).unwrap();
+                let old_members_count = old_members.len();
+                if old_members_count < new_members_count {
+                    play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("PNH").expect("Couldn't play file").to_string())).await;
+                }
+            }
+        }
+    }
+
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
             let channel_id = command.channel_id;
-            let guild_id = command.data.guild_id.unwrap();
+            let guild_id = command.data.guild_id.expect("No guild was found");
             let command_options = &command.data.options();
 
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
                 "rule34" => Some(rule34::find_image(command_options).await),
                 "join" => Some(
-                    voice::join(&ctx.clone(), command.data.guild_id.unwrap(), &command.user).await,
+                    voice::join(&ctx.clone(), guild_id, &command.user).await,
                 ),
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
-                "phrase" => Some(voice::phrase(&ctx.clone(), guild_id).await),
+                "phrase" => Some(voice::play_random_file(&ctx.clone(), guild_id).await),
                 "delete" => Some(
                     delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id)
                         .await,

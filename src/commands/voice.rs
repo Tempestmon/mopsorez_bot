@@ -14,11 +14,12 @@ use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::fs::read_dir;
 use std::path::{PathBuf};
 
-struct TrackErrorNotifier;
+pub(crate) struct TrackErrorNotifier;
 
 #[async_trait]
 impl VoiceEventHandler for TrackErrorNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        println!("{ctx:#?}");
         if let EventContext::Track(track_list) = ctx {
             for (state, handle) in *track_list {
                 println!(
@@ -37,7 +38,7 @@ fn get_music_file() -> PathBuf {
     let music_directory = env::var("PHRASES_DIRECTORY").expect("Expected a directory in the environment");
     let mut music_files: Vec<_> = read_dir(music_directory)
         .expect("Failed to read music directory")
-        .map(|entry| entry.unwrap().path())
+        .map(|entry| entry.expect("No entries").path())
         .collect();
     let mut rng = thread_rng();
     music_files.shuffle(&mut rng);
@@ -46,7 +47,7 @@ fn get_music_file() -> PathBuf {
 }
 
 pub async fn join(ctx: &Context, guild_id: GuildId, user: &User) -> String {
-    let guild = guild_id.to_guild_cached(&ctx.cache).unwrap().clone();
+    let guild = guild_id.to_guild_cached(&ctx.cache).expect("No cached guild").clone();
     let voice_channel_id = guild
         .voice_states
         .get(&user.id)
@@ -94,18 +95,18 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
         let mut handler = handler_lock.lock().await;
 
         let src = if search {
-            YoutubeDl::new_search(http_client, url)
+            YoutubeDl::new_search(http_client, url.clone())
         } else {
-            YoutubeDl::new(http_client, url)
+            YoutubeDl::new(http_client, url.clone())
         };
         let _ = handler.play_input(src.clone().into());
-        "Играем".to_string()
+        format!("Играем {url}")
     } else {
         "Я не в канале".to_string()
     }
 }
 
-pub async fn phrase(ctx: &Context, guild_id: GuildId) -> String {
+pub async fn play_file(ctx: &Context, guild_id: GuildId, path: PathBuf) -> String {
     let manager = songbird::get(ctx)
         .await
         .expect("Songbird Voice client placed in at initialisation.")
@@ -113,17 +114,19 @@ pub async fn phrase(ctx: &Context, guild_id: GuildId) -> String {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        let random_file = get_music_file();
-        println!("{random_file:?}");
-        let file_path = File::new(random_file);
+        let file_path = File::new(path);
         let src = Input::from(file_path);
-        // let src = Track::from(src);
         let result = handler.play_input(src);
         println!("{result:#?}");
         "Играем".to_string()
     } else {
         "Я не в канале".to_string()
     }
+}
+
+pub async fn play_random_file(ctx: &Context, guild_id: GuildId) -> String {
+    let path = get_music_file();
+    play_file(ctx, guild_id, path).await
 }
 
 pub fn register_play() -> CreateCommand {

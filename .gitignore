@@ -1,3 +1,4 @@
 /target
 /.idea
 local.env
+command_map.json
