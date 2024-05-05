@@ -11,9 +11,10 @@ use serenity::model::channel::ReactionType;
 use serenity::model::gateway::Ready;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
-use songbird::{Config, SerenityInit};
 use songbird::driver::DecodeMode;
+use songbird::{Config, SerenityInit};
 use tokio::time::sleep;
+use tracing::{error, info};
 
 use commands::{delete, ping, rule34, voice};
 use helpers::send_discord_message;
@@ -34,7 +35,8 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
-        if !msg.author.bot && msg.author.name != "tempestmon" {
+        let author_name = &msg.author.name;
+        if !msg.author.bot && author_name != "tempestmon" {
             let _ = msg
                 .react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned()))
                 .await;
@@ -47,7 +49,7 @@ impl EventHandler for Handler {
             let _ = msg
                 .react(ctx.clone().http, ReactionType::Unicode("🏳️‍🌈".to_owned()))
                 .await;
-            println!("Marking gay");
+            info!("Marking gay for {author_name}");
         }
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
@@ -61,7 +63,7 @@ impl EventHandler for Handler {
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
-        println!("{} has connected!", ready.user.name);
+        info!("{} has connected!", ready.user.name);
 
         let guild = ready.guilds[0];
         assert_eq!(guild.unavailable, true);
@@ -85,29 +87,56 @@ impl EventHandler for Handler {
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         let cache = &ctx.cache;
-        let new_channel = new.channel_id.expect("No ChannelId for new channel").to_channel_cached(&cache).expect("Cannot get cached channel").clone();
-        let members = new_channel.members(&cache).expect("Couldn't get members in new channel");
+        let new_channel = new
+            .channel_id
+            .expect("No ChannelId for new channel")
+            .to_channel_cached(&cache)
+            .expect("Cannot get cached channel")
+            .clone();
+        let members = new_channel
+            .members(&cache)
+            .expect("Couldn't get members in new channel");
         if new.user_id.to_user(&ctx.http).await.unwrap().bot {
             return;
         }
         let new_members_count = members.len();
         let state = new.clone();
         if state.self_mute {
-            play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("OTVET").expect("Couldn't play file").to_string())).await;
+            play_file(
+                &ctx,
+                new_channel.guild_id,
+                PathBuf::from(env::var("OTVET").expect("Couldn't play file").to_string()),
+            )
+            .await;
         }
 
         match old {
             None => {
                 join(&ctx, new.guild_id.unwrap(), &new.user_id).await;
                 sleep(Duration::new(1, 0)).await;
-                play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("HOOLI").expect("Couldn't play file").to_string())).await;
+                play_file(
+                    &ctx,
+                    new_channel.guild_id,
+                    PathBuf::from(env::var("HOOLI").expect("Couldn't play file").to_string()),
+                )
+                .await;
             }
             Some(old_channel) => {
-                let channel = old_channel.channel_id.unwrap().to_channel_cached(&cache).unwrap().clone();
+                let channel = old_channel
+                    .channel_id
+                    .unwrap()
+                    .to_channel_cached(&cache)
+                    .unwrap()
+                    .clone();
                 let old_members = channel.members(&cache).unwrap();
                 let old_members_count = old_members.len();
                 if old_members_count < new_members_count {
-                    play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("PNH").expect("Couldn't play file").to_string())).await;
+                    play_file(
+                        &ctx,
+                        new_channel.guild_id,
+                        PathBuf::from(env::var("PNH").expect("Couldn't play file").to_string()),
+                    )
+                    .await;
                 }
             }
         }
@@ -122,9 +151,7 @@ impl EventHandler for Handler {
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
                 "rule34" => Some(rule34::find_image(command_options).await),
-                "join" => Some(
-                    join(&ctx.clone(), guild_id, &command.user.id).await,
-                ),
+                "join" => Some(join(&ctx.clone(), guild_id, &command.user.id).await),
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
                 "phrase" => Some(voice::play_random_file(&ctx.clone(), guild_id).await),
                 "delete" => Some(
@@ -138,7 +165,7 @@ impl EventHandler for Handler {
                 let data = CreateInteractionResponseMessage::new().content(content);
                 let builder = CreateInteractionResponse::Message(data);
                 if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("Cannot respond to slash command: {why}");
+                    error!("Cannot respond to slash command: {why}");
                 }
             }
         }
@@ -168,6 +195,10 @@ impl Handler {
 
 #[tokio::main]
 async fn main() {
+    let subscriber = tracing_subscriber::fmt().with_target(false).finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber.");
+
     let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
     let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
     let mut client = Client::builder(&token, GatewayIntents::all())
@@ -177,6 +208,6 @@ async fn main() {
         .await
         .expect("Err creating client");
     if let Err(why) = client.start().await {
-        println!("Client error: {why:?}");
+        error!("Client error: {why:?}");
     }
 }

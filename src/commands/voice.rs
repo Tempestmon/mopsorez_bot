@@ -1,18 +1,22 @@
 use std::env;
 use std::fs::read_dir;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue, UserId};
+use serenity::all::{
+    CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue,
+    UserId,
+};
 use serenity::async_trait;
 use serenity::prelude::Context;
-use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
+use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
+use tracing::{error, info, warn};
 
 use crate::{helpers, HttpKey};
 
@@ -24,7 +28,6 @@ struct Receiver {
     guild_id: Option<GuildId>,
     ctx: Option<Context>,
 }
-
 
 #[derive(Debug)]
 struct InnerReceiver {
@@ -57,7 +60,7 @@ impl VoiceEventHandler for Receiver {
         match ctx {
             EventContext::Track(_) => {}
             EventContext::SpeakingStateUpdate(_) => {
-                println!("SpeakingStateUpdate")
+                info!("SpeakingStateUpdate")
             }
             EventContext::VoiceTick(tick) => {
                 let speaking = tick.speaking.len();
@@ -70,7 +73,12 @@ impl VoiceEventHandler for Receiver {
                 if tick_count >= threshold {
                     play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
                     self.inner.tick_count.store(0, Ordering::SeqCst);
-                    self.inner.threshold.store((helpers::get_random_number(200, 2000) as usize * total_participants) as i64, Ordering::SeqCst);
+                    let new_threshold = (helpers::get_random_number(200, 2000) as usize
+                        * total_participants) as i64;
+                    self.inner.threshold.store(new_threshold, Ordering::SeqCst);
+                    info!(
+                        "Old threshold has been reached. Playing new phrase in {new_threshold}0 ms"
+                    );
                 }
                 self.inner.tick_count.fetch_add(1, Ordering::SeqCst);
             }
@@ -85,7 +93,7 @@ impl VoiceEventHandler for Receiver {
             EventContext::DriverReconnect(_) => {}
             EventContext::DriverDisconnect(_) => {}
             _ => {
-                println!("нихуя")
+                warn!("нихуя")
             }
         };
         None
@@ -95,10 +103,9 @@ impl VoiceEventHandler for Receiver {
 #[async_trait]
 impl VoiceEventHandler for TrackErrorNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        println!("{ctx:#?}");
         if let EventContext::Track(track_list) = ctx {
             for (state, handle) in *track_list {
-                println!(
+                error!(
                     "Track {:?} encountered an error: {:?}",
                     handle.uuid(),
                     state.playing
@@ -111,7 +118,8 @@ impl VoiceEventHandler for TrackErrorNotifier {
 }
 
 fn get_music_file() -> PathBuf {
-    let music_directory = env::var("PHRASES_DIRECTORY").expect("Expected a directory in the environment");
+    let music_directory =
+        env::var("PHRASES_DIRECTORY").expect("Expected a directory in the environment");
     let mut music_files: Vec<_> = read_dir(music_directory)
         .expect("Failed to read music directory")
         .map(|entry| entry.expect("No entries").path())
@@ -123,7 +131,10 @@ fn get_music_file() -> PathBuf {
 }
 
 pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String {
-    let guild = guild_id.to_guild_cached(&ctx.cache).expect("No cached guild").clone();
+    let guild = guild_id
+        .to_guild_cached(&ctx.cache)
+        .expect("No cached guild")
+        .clone();
     let voice_channel_id = guild
         .voice_states
         .get(user_id)
@@ -146,6 +157,7 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
         handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
     }
+    info!("Joined channel");
     "Я тут. Чё надо?".to_string()
 }
 
@@ -196,10 +208,10 @@ pub async fn play_file(ctx: &Context, guild_id: GuildId, path: PathBuf) -> Strin
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        let file_path = File::new(path);
+        let file_path = File::new(path.clone());
         let src = Input::from(file_path);
-        let result = handler.play_input(src);
-        println!("{result:#?}");
+        let _ = handler.play_input(src);
+        info!("Playing file {path:#?}");
         "Играем".to_string()
     } else {
         "Я не в канале".to_string()

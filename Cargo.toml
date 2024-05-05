@@ -16,3 +16,6 @@ poise = "0.6.1-rc1"
 songbird = { version = "0.4.1", default-features = true, features = ["receive"] }
 symphonia = { version = "0.5.4", default-features = true, features = ["mp3"] }
 dashmap = "5.5.3"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing = "0.1.40"
+chrono = "0.4.37"
