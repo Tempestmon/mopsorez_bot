@@ -13,12 +13,13 @@ use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
-use songbird::{SerenityInit, TrackEvent};
+use songbird::{Config, SerenityInit};
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
+use songbird::driver::DecodeMode;
 use tokio::time::sleep;
-use crate::commands::voice::{play_file};
+use crate::commands::voice::{join, play_file};
 
 struct HttpKey;
 
@@ -109,14 +110,7 @@ impl EventHandler for Handler {
 
         match old {
             None => {
-                let manager = songbird::get(&ctx)
-                    .await
-                    .expect("Cannot register songbird manager")
-                    .clone();
-                if let Ok(handler_lock) = manager.join(new.guild_id.unwrap(), new.channel_id.unwrap()).await {
-                    let mut handler = handler_lock.lock().await;
-                    handler.add_global_event(TrackEvent::Error.into(), voice::TrackErrorNotifier);
-                }
+                join(&ctx, new.guild_id.unwrap(), &new.user_id).await;
                 sleep(Duration::new(1, 0)).await;
                 play_file(&ctx, new_channel.guild_id, PathBuf::from(env::var("HOOLI").expect("Couldn't play file").to_string())).await;
             }
@@ -141,7 +135,7 @@ impl EventHandler for Handler {
                 "ping" => Some(ping::run()),
                 "rule34" => Some(rule34::find_image(command_options).await),
                 "join" => Some(
-                    voice::join(&ctx.clone(), guild_id, &command.user).await,
+                    join(&ctx.clone(), guild_id, &command.user.id).await,
                 ),
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
                 "phrase" => Some(voice::play_random_file(&ctx.clone(), guild_id).await),
@@ -187,9 +181,10 @@ impl Handler {
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a discord token in the environment");
+    let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
     let mut client = Client::builder(&token, GatewayIntents::all())
         .event_handler(Handler)
-        .register_songbird()
+        .register_songbird_from_config(songbird_config)
         .type_map_insert::<HttpKey>(HttpClient::new())
         .await
         .expect("Err creating client");

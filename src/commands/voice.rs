@@ -2,19 +2,84 @@ use std::env;
 use crate::HttpKey;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serenity::all::{
-    CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue,
-    User,
-};
+use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue, UserId};
 use serenity::async_trait;
 use serenity::prelude::Context;
 use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
-use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
+use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use std::fs::read_dir;
 use std::path::{PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use dashmap::DashMap;
 
 pub(crate) struct TrackErrorNotifier;
+
+#[derive(Clone, Debug)]
+struct Receiver {
+    inner: Arc<InnerReceiver>,
+    guild_id: Option<GuildId>,
+    ctx: Option<Context>,
+}
+
+
+#[derive(Debug)]
+struct InnerReceiver {
+    #[allow(dead_code)]
+    last_tick_was_empty: AtomicBool,
+    #[allow(dead_code)]
+    known_ssrcs: DashMap<u32, UserId>,
+    tick_count: AtomicI64,
+}
+
+impl Receiver {
+    pub fn new(guild_id: GuildId, ctx: Context) -> Self {
+        Self {
+            inner: Arc::new(InnerReceiver {
+                last_tick_was_empty: AtomicBool::default(),
+                known_ssrcs: DashMap::new(),
+                tick_count: Default::default(),
+            }),
+            guild_id: Some(guild_id),
+            ctx: Some(ctx),
+        }
+    }
+}
+
+#[async_trait]
+impl VoiceEventHandler for Receiver {
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        match ctx {
+            EventContext::Track(_) => {}
+            EventContext::SpeakingStateUpdate(_) => {
+                println!("SpeakingStateUpdate")
+            }
+            EventContext::VoiceTick(_) => {
+                let tick_count = self.inner.tick_count.load(Ordering::SeqCst);
+                if tick_count >= 1000 {
+                    play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
+                    self.inner.tick_count.store(0, Ordering::SeqCst);
+                }
+                self.inner.tick_count.fetch_add(1, Ordering::SeqCst);
+            }
+            EventContext::RtpPacket(_) => {
+                println!("Rtp packet")
+            }
+            EventContext::RtcpPacket(_) => {
+                println!("rtcp packet")
+            }
+            EventContext::ClientDisconnect(_) => {}
+            EventContext::DriverConnect(_) => {}
+            EventContext::DriverReconnect(_) => {}
+            EventContext::DriverDisconnect(_) => {}
+            _ => {
+                println!("нихуя")
+            }
+        };
+        None
+    }
+}
 
 #[async_trait]
 impl VoiceEventHandler for TrackErrorNotifier {
@@ -46,11 +111,11 @@ fn get_music_file() -> PathBuf {
     random_file
 }
 
-pub async fn join(ctx: &Context, guild_id: GuildId, user: &User) -> String {
+pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String {
     let guild = guild_id.to_guild_cached(&ctx.cache).expect("No cached guild").clone();
     let voice_channel_id = guild
         .voice_states
-        .get(&user.id)
+        .get(user_id)
         .and_then(|voice_state| voice_state.channel_id);
     let voice_channel_id = match voice_channel_id {
         Some(v) => v,
@@ -62,6 +127,12 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user: &User) -> String {
         .clone();
     if let Ok(handler_lock) = manager.join(guild_id, voice_channel_id).await {
         let mut handler = handler_lock.lock().await;
+        let evt_receiver = Receiver::new(guild_id, ctx.clone());
+
+        handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
+        handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
+        handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
+        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
     }
     "Я тут. Чё надо?".to_string()
