@@ -52,7 +52,7 @@ pub fn register() -> CreateCommand {
                 "number",
                 "Количество сообщений для удаления",
             )
-            .required(true),
+                .required(true),
         )
         .description("Удалить последние сообщения")
 }

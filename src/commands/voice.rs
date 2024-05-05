@@ -1,18 +1,20 @@
 use std::env;
-use crate::HttpKey;
+use std::fs::read_dir;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+
+use dashmap::DashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serenity::all::{CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue, UserId};
 use serenity::async_trait;
 use serenity::prelude::Context;
+use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
-use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
-use std::fs::read_dir;
-use std::path::{PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use dashmap::DashMap;
+
+use crate::{helpers, HttpKey};
 
 pub(crate) struct TrackErrorNotifier;
 
@@ -31,6 +33,7 @@ struct InnerReceiver {
     #[allow(dead_code)]
     known_ssrcs: DashMap<u32, UserId>,
     tick_count: AtomicI64,
+    threshold: AtomicI64,
 }
 
 impl Receiver {
@@ -40,6 +43,7 @@ impl Receiver {
                 last_tick_was_empty: AtomicBool::default(),
                 known_ssrcs: DashMap::new(),
                 tick_count: Default::default(),
+                threshold: Default::default(),
             }),
             guild_id: Some(guild_id),
             ctx: Some(ctx),
@@ -55,19 +59,26 @@ impl VoiceEventHandler for Receiver {
             EventContext::SpeakingStateUpdate(_) => {
                 println!("SpeakingStateUpdate")
             }
-            EventContext::VoiceTick(_) => {
+            EventContext::VoiceTick(tick) => {
+                let speaking = tick.speaking.len();
+                let total_participants = speaking + tick.silent.len();
+                if total_participants == 0 {
+                    return None;
+                }
                 let tick_count = self.inner.tick_count.load(Ordering::SeqCst);
-                if tick_count >= 1000 {
+                let threshold = self.inner.threshold.load(Ordering::SeqCst);
+                if tick_count >= threshold {
                     play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
                     self.inner.tick_count.store(0, Ordering::SeqCst);
+                    self.inner.threshold.store((helpers::get_random_number(200, 2000) as usize * total_participants) as i64, Ordering::SeqCst);
                 }
                 self.inner.tick_count.fetch_add(1, Ordering::SeqCst);
             }
             EventContext::RtpPacket(_) => {
-                println!("Rtp packet")
+                // println!("Rtp packet")
             }
             EventContext::RtcpPacket(_) => {
-                println!("rtcp packet")
+                // println!("rtcp packet")
             }
             EventContext::ClientDisconnect(_) => {}
             EventContext::DriverConnect(_) => {}

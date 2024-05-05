@@ -1,25 +1,27 @@
-mod commands;
-mod helpers;
+use std::env;
+use std::path::PathBuf;
+use std::time::Duration;
 
-use commands::{delete, ping, rule34, voice};
-use helpers::send_discord_message;
-use rand::distributions::{Distribution, Uniform};
 use reqwest::Client as HttpClient;
-use serenity::model::channel::ReactionType;
-use serenity::model::voice::VoiceState;
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
+use serenity::model::channel::ReactionType;
 use serenity::model::gateway::Ready;
+use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::{Config, SerenityInit};
-use std::env;
-use std::path::PathBuf;
-use std::time::Duration;
 use songbird::driver::DecodeMode;
 use tokio::time::sleep;
+
+use commands::{delete, ping, rule34, voice};
+use helpers::send_discord_message;
+
 use crate::commands::voice::{join, play_file};
+
+mod commands;
+mod helpers;
 
 struct HttpKey;
 
@@ -28,20 +30,6 @@ impl TypeMapKey for HttpKey {
 }
 
 struct Handler;
-
-fn get_random_number(number: i8) -> i8 {
-    let mut rng = rand::thread_rng();
-    let die = Uniform::from(1..number + 1);
-    die.sample(&mut rng)
-}
-
-fn is_answer_needed(prob_number: i8) -> bool {
-    let throw = get_random_number(prob_number);
-    if throw == prob_number {
-        return true;
-    }
-    false
-}
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -164,11 +152,11 @@ impl Handler {
             "нет" | "Нет" | "Net" | "net" => Some("Пидора ответ"),
             "Мопсы пидоры?" | "Мопсы чурки?" => Some("Да"),
             _ => match msg.author.name.as_str() {
-                "_fatpug_" => match is_answer_needed(3) {
+                "_fatpug_" => match helpers::is_answer_needed(3) {
                     true => Some("Заткнись, мопс"),
                     false => None,
                 },
-                _ => match is_answer_needed(6) {
+                _ => match helpers::is_answer_needed(6) {
                     true => Some("Помолчи, заебал"),
                     false => None,
                 },
