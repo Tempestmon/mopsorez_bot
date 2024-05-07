@@ -93,10 +93,18 @@ impl EventHandler for Handler {
             .to_channel_cached(&cache)
             .expect("Cannot get cached channel")
             .clone();
+        let new_channel_name = &new_channel.name;
         let members = new_channel
             .members(&cache)
             .expect("Couldn't get members in new channel");
-        if new.user_id.to_user(&ctx.http).await.unwrap().bot {
+        let new_user = new
+            .user_id
+            .to_user(&ctx.http)
+            .await
+            .expect("Couldn't get user by userid");
+        let new_username = new_user.name;
+        info!("User {new_username} state updated in channel {new_channel_name}");
+        if new_user.bot {
             return;
         }
         let new_members_count = members.len();
@@ -128,8 +136,10 @@ impl EventHandler for Handler {
                     .to_channel_cached(&cache)
                     .unwrap()
                     .clone();
+                let old_channel_name = &channel.name;
                 let old_members = channel.members(&cache).unwrap();
                 let old_members_count = old_members.len();
+                info!("User state updated from {old_channel_name} to {new_channel_name}");
                 if old_members_count < new_members_count {
                     play_file(
                         &ctx,

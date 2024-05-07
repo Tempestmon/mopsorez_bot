@@ -71,10 +71,11 @@ impl VoiceEventHandler for Receiver {
                 let tick_count = self.inner.tick_count.load(Ordering::SeqCst);
                 let threshold = self.inner.threshold.load(Ordering::SeqCst);
                 if tick_count >= threshold {
+                    info!("Participants count is {total_participants}");
                     play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
                     self.inner.tick_count.store(0, Ordering::SeqCst);
-                    let new_threshold = (helpers::get_random_number(200, 2000) as usize
-                        * total_participants) as i64;
+                    let random_number = helpers::get_random_number(200, 2000) as usize;
+                    let new_threshold = (random_number * total_participants) as i64;
                     self.inner.threshold.store(new_threshold, Ordering::SeqCst);
                     info!(
                         "Old threshold has been reached. Playing new phrase in {new_threshold}0 ms"
@@ -194,6 +195,7 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
             YoutubeDl::new(http_client, url.clone())
         };
         let _ = handler.play_input(src.clone().into());
+        info!("Playing video from {url}");
         format!("Играем {url}")
     } else {
         "Я не в канале".to_string()
