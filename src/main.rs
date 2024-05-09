@@ -113,7 +113,7 @@ impl EventHandler for Handler {
             play_file(
                 &ctx,
                 new_channel.guild_id,
-                PathBuf::from(env::var("OTVET").expect("Couldn't play file").to_string()),
+                PathBuf::from(env::var("OTVET").expect("Couldn't find OTVET variable").to_string()),
             )
             .await;
         }
@@ -125,7 +125,7 @@ impl EventHandler for Handler {
                 play_file(
                     &ctx,
                     new_channel.guild_id,
-                    PathBuf::from(env::var("HOOLI").expect("Couldn't play file").to_string()),
+                    PathBuf::from(env::var("HOOLI").expect("Couldn't find HOOLI variable").to_string()),
                 )
                 .await;
             }
@@ -144,7 +144,7 @@ impl EventHandler for Handler {
                     play_file(
                         &ctx,
                         new_channel.guild_id,
-                        PathBuf::from(env::var("PNH").expect("Couldn't play file").to_string()),
+                        PathBuf::from(env::var("PNH").expect("Couldn't find PNH variable").to_string()),
                     )
                     .await;
                 }
