@@ -43,7 +43,7 @@ default-features = false
 
 [dependencies.songbird]
 version = "0.4.1"
-features = ["receive"]
+features = ["receive", "driver", "builtin-queue"]
 default-features = true
 
 [dependencies.symphonia]

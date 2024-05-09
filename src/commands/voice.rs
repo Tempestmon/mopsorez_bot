@@ -16,7 +16,7 @@ use serenity::prelude::Context;
 use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
 use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{helpers, HttpKey};
 
@@ -155,7 +155,7 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
         handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
-        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
+        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver.clone());
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
     }
     info!("Joined channel");
@@ -188,7 +188,6 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-
         let src = if search {
             YoutubeDl::new_search(http_client, url.clone())
         } else {
@@ -212,8 +211,8 @@ pub async fn play_file(ctx: &Context, guild_id: GuildId, path: PathBuf) -> Strin
         let mut handler = handler_lock.lock().await;
         let file_path = File::new(path.clone());
         let src = Input::from(file_path);
-        let _ = handler.play_input(src);
-        info!("Playing file {path:#?}");
+        handler.enqueue(src.into()).await;
+        info!("Added song {path:#?} to queue");
         "Играем".to_string()
     } else {
         "Я не в канале".to_string()
