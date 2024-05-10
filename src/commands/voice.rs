@@ -16,7 +16,7 @@ use serenity::prelude::Context;
 use songbird::events::TrackEvent;
 use songbird::input::{File, Input, YoutubeDl};
 use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::{helpers, HttpKey};
 
@@ -151,11 +151,11 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
     if let Ok(handler_lock) = manager.join(guild_id, voice_channel_id).await {
         let mut handler = handler_lock.lock().await;
         let evt_receiver = Receiver::new(guild_id, ctx.clone());
-
+        handler.remove_all_global_events();
         handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
         handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
-        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver.clone());
+        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
         handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
     }
     info!("Joined channel");

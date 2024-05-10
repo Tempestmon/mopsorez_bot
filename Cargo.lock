@@ -1010,6 +1010,7 @@ name = "mopsorez_bot"
 version = "0.0.1"
 dependencies = [
  "dashmap",
+ "log",
  "poise",
  "rand",
  "reqwest",

@@ -3,3 +3,4 @@
 local.env
 command_map.json
 /sounds
+.DS_Store
