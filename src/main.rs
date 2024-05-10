@@ -3,12 +3,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use reqwest::Client as HttpClient;
+use serenity::all::CreateMessage;
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
 use serenity::model::channel::ReactionType;
 use serenity::model::gateway::Ready;
+use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::driver::DecodeMode;
@@ -32,10 +34,14 @@ impl TypeMapKey for HttpKey {
 
 struct Handler;
 
+const MAIN_CHANNEL_ID: u64 = 375256831540461570;
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         let author_name = &msg.author.name;
+        let content = &msg.content;
+        info!("{author_name} has sent a message {content:#?}");
         if !msg.author.bot && author_name != "tempestmon" {
             let _ = msg
                 .react(ctx.clone().http, ReactionType::Unicode("🇬".to_owned()))
@@ -53,11 +59,8 @@ impl EventHandler for Handler {
         }
         if !msg.author.bot {
             let bot_message = Self::get_answer_after_user_message(&msg).await;
-            match bot_message {
-                Some(message) => {
-                    send_discord_message(&ctx, &msg, message).await;
-                }
-                None => {}
+            if let Some(message) = bot_message {
+                send_discord_message(&ctx, &msg, message).await;
             }
         }
     }
@@ -66,7 +69,6 @@ impl EventHandler for Handler {
         info!("{} has connected!", ready.user.name);
 
         let guild = ready.guilds[0];
-        assert_eq!(guild.unavailable, true);
         let guild_id = guild.id;
 
         guild_id
@@ -85,19 +87,39 @@ impl EventHandler for Handler {
             .expect("failed to create application command");
     }
 
-    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+    async fn voice_state_update(
+        &self,
+        ctx: Context,
+        old_state: Option<VoiceState>,
+        new_state: VoiceState,
+    ) {
         let cache = &ctx.cache;
-        let new_channel = new
+        if new_state.channel_id.is_none() {
+            let main_channel = &ctx
+                .cache
+                .channel(ChannelId::new(MAIN_CHANNEL_ID))
+                .unwrap()
+                .clone();
+            let old_user = old_state.unwrap().member.unwrap();
+            let message_builder =
+                CreateMessage::new().content(format!("{old_user}, хули ты вышел?"));
+            main_channel
+                .send_message(&ctx.http, message_builder)
+                .await
+                .expect("Could not send a message");
+            return;
+        }
+        let new_channel = new_state
             .channel_id
             .expect("No ChannelId for new channel")
-            .to_channel_cached(&cache)
+            .to_channel_cached(cache)
             .expect("Cannot get cached channel")
             .clone();
         let new_channel_name = &new_channel.name;
         let members = new_channel
-            .members(&cache)
+            .members(cache)
             .expect("Couldn't get members in new channel");
-        let new_user = new
+        let new_user = new_state
             .user_id
             .to_user(&ctx.http)
             .await
@@ -108,24 +130,32 @@ impl EventHandler for Handler {
             return;
         }
         let new_members_count = members.len();
-        let state = new.clone();
+        let state = new_state.clone();
         if state.self_mute {
             play_file(
                 &ctx,
                 new_channel.guild_id,
-                PathBuf::from(env::var("OTVET").expect("Couldn't find OTVET variable").to_string()),
+                PathBuf::from(
+                    env::var("OTVET")
+                        .expect("Couldn't find OTVET variable")
+                        .to_string(),
+                ),
             )
             .await;
         }
 
-        match old {
+        match old_state {
             None => {
-                join(&ctx, new.guild_id.unwrap(), &new.user_id).await;
+                join(&ctx, new_state.guild_id.unwrap(), &new_state.user_id).await;
                 sleep(Duration::new(1, 0)).await;
                 play_file(
                     &ctx,
                     new_channel.guild_id,
-                    PathBuf::from(env::var("HOOLI").expect("Couldn't find HOOLI variable").to_string()),
+                    PathBuf::from(
+                        env::var("HOOLI")
+                            .expect("Couldn't find HOOLI variable")
+                            .to_string(),
+                    ),
                 )
                 .await;
             }
@@ -133,20 +163,28 @@ impl EventHandler for Handler {
                 let channel = old_channel
                     .channel_id
                     .unwrap()
-                    .to_channel_cached(&cache)
+                    .to_channel_cached(cache)
                     .unwrap()
                     .clone();
                 let old_channel_name = &channel.name;
-                let old_members = channel.members(&cache).unwrap();
+                let old_members = channel.members(cache).unwrap();
                 let old_members_count = old_members.len();
                 info!("User state updated from {old_channel_name} to {new_channel_name}");
-                if old_members_count < new_members_count {
+                if old_members_count <= new_members_count {
+                    sleep(Duration::new(1, 0)).await;
                     play_file(
                         &ctx,
                         new_channel.guild_id,
-                        PathBuf::from(env::var("PNH").expect("Couldn't find PNH variable").to_string()),
+                        PathBuf::from(
+                            env::var("PNH")
+                                .expect("Couldn't find PNH variable")
+                                .to_string(),
+                        ),
                     )
                     .await;
+                    if old_members_count <= 1 {
+                        join(&ctx, old_channel.guild_id.unwrap(), &old_channel.user_id).await;
+                    }
                 }
             }
         }

@@ -46,7 +46,7 @@ impl Receiver {
                 last_tick_was_empty: AtomicBool::default(),
                 known_ssrcs: DashMap::new(),
                 tick_count: Default::default(),
-                threshold: Default::default(),
+                threshold: AtomicI64::new(2000),
             }),
             guild_id: Some(guild_id),
             ctx: Some(ctx),
@@ -127,8 +127,7 @@ fn get_music_file() -> PathBuf {
         .collect();
     let mut rng = thread_rng();
     music_files.shuffle(&mut rng);
-    let random_file = music_files[0].clone();
-    random_file
+    music_files[0].clone()
 }
 
 pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String {
@@ -193,7 +192,10 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
         } else {
             YoutubeDl::new(http_client, url.clone())
         };
-        let _ = handler.play_input(src.clone().into());
+        handler
+            .play_input(src.clone().into())
+            .set_volume(0.1)
+            .expect("Could not set volume");
         info!("Playing video from {url}");
         format!("Играем {url}")
     } else {

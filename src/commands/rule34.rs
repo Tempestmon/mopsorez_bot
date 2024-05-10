@@ -59,13 +59,11 @@ pub async fn find_image(options: &[ResolvedOption<'_>]) -> String {
     }
     let images: Result<Vec<Rule34Model>, Error> = serde_json::from_str(&*response);
     let images = images.expect("Got error parsing response");
-    String::from(
-        images
-            .choose(&mut rand::thread_rng())
-            .expect("Couldn't choose random")
-            .file_url
-            .clone(),
-    )
+    images
+        .choose(&mut rand::thread_rng())
+        .expect("Couldn't choose random")
+        .file_url
+        .clone()
 }
 
 pub fn register() -> CreateCommand {
