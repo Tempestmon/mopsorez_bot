@@ -74,7 +74,7 @@ impl VoiceEventHandler for Receiver {
                     info!("Participants count is {total_participants}");
                     play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
                     self.inner.tick_count.store(0, Ordering::SeqCst);
-                    let random_number = helpers::get_random_number(200, 2000) as usize;
+                    let random_number = helpers::get_random_number(0, 2000) as usize;
                     let new_threshold = (random_number * total_participants) as i64;
                     self.inner.threshold.store(new_threshold, Ordering::SeqCst);
                     info!(

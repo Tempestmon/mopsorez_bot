@@ -171,7 +171,7 @@ impl EventHandler for Handler {
                 let old_members_count = old_members.len();
                 info!("User state updated from {old_channel_name} to {new_channel_name}");
                 if old_members_count <= new_members_count {
-                    sleep(Duration::new(1, 0)).await;
+                    sleep(Duration::new(2, 0)).await;
                     play_file(
                         &ctx,
                         new_channel.guild_id,
