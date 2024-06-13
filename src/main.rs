@@ -3,14 +3,13 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use reqwest::Client as HttpClient;
-use serenity::all::CreateMessage;
+use serenity::all::{CreateMessage, Reaction};
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
 use serenity::model::channel::ReactionType;
 use serenity::model::gateway::Ready;
-use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use songbird::driver::DecodeMode;
@@ -34,7 +33,6 @@ impl TypeMapKey for HttpKey {
 
 struct Handler;
 
-const MAIN_CHANNEL_ID: u64 = 375256831540461570;
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -62,6 +60,19 @@ impl EventHandler for Handler {
             if let Some(message) = bot_message {
                 send_discord_message(&ctx, &msg, message).await;
             }
+        }
+    }
+
+    async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
+        let channel = reaction.channel_id;
+        let user = reaction.member.unwrap();
+        let reaction_text = reaction.emoji.clone().to_string();
+        if reaction_text == "🏳️‍🌈" && user.user.name != "tempestmon" && !user.user.bot {
+            let message = CreateMessage::new().content(format!("{user} поддержал LGBT {reaction_text}"));
+            channel
+                .send_message(&ctx.http, message)
+                .await
+                .expect("Could not send a message");
         }
     }
 
@@ -97,7 +108,7 @@ impl EventHandler for Handler {
         if new_state.channel_id.is_none() {
             let main_channel = &ctx
                 .cache
-                .channel(ChannelId::new(MAIN_CHANNEL_ID))
+                .channel(old_state.clone().unwrap().channel_id.unwrap())
                 .unwrap()
                 .clone();
             let old_user = old_state.unwrap().member.unwrap();
