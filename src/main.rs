@@ -17,7 +17,7 @@ use songbird::{Config, SerenityInit};
 use tokio::time::sleep;
 use tracing::{error, info};
 
-use commands::{delete, ping, rule34, voice};
+use commands::{delete, fisting, ping, rule34, voice};
 use helpers::send_discord_message;
 
 use crate::commands::voice::{join, play_file};
@@ -32,7 +32,6 @@ impl TypeMapKey for HttpKey {
 }
 
 struct Handler;
-
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -68,7 +67,8 @@ impl EventHandler for Handler {
         let user = reaction.member.unwrap();
         let reaction_text = reaction.emoji.clone().to_string();
         if reaction_text == "🏳️‍🌈" && user.user.name != "tempestmon" && !user.user.bot {
-            let message = CreateMessage::new().content(format!("{user} поддержал LGBT {reaction_text}"));
+            let message =
+                CreateMessage::new().content(format!("{user} поддержал LGBT {reaction_text}"));
             channel
                 .send_message(&ctx.http, message)
                 .await
@@ -91,6 +91,8 @@ impl EventHandler for Handler {
                     voice::register_play(),
                     voice::register_join(),
                     voice::register_phrase(),
+                    fisting::register_fisting(),
+                    fisting::register_defense(),
                     delete::register(),
                 ],
             )
@@ -213,6 +215,7 @@ impl EventHandler for Handler {
                 "join" => Some(join(&ctx.clone(), guild_id, &command.user.id).await),
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
                 "phrase" => Some(voice::play_random_file(&ctx.clone(), guild_id).await),
+                "fisting" => Some(fisting::perform_fisting(command_options, &command.user).await),
                 "delete" => Some(
                     delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id)
                         .await,
