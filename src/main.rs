@@ -216,6 +216,7 @@ impl EventHandler for Handler {
                 "play" => Some(voice::play(command_options, &ctx.clone(), guild_id).await),
                 "phrase" => Some(voice::play_random_file(&ctx.clone(), guild_id).await),
                 "fisting" => Some(fisting::perform_fisting(command_options, &command.user).await),
+                "fisting_defense" => Some(fisting::defend_from_fisting(&command.user).await),
                 "delete" => Some(
                     delete::delete_messages(command_options, &ctx.clone(), guild_id, &channel_id)
                         .await,
