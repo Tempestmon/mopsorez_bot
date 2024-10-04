@@ -1,8 +1,9 @@
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serenity::all::{
     CommandOptionType, CreateCommand, CreateCommandOption, ResolvedOption, ResolvedValue, User,
 };
+use tracing::info;
 
 #[derive(Deserialize, Serialize, Debug)]
 struct FistingInfo {
@@ -35,7 +36,9 @@ pub async fn perform_fisting(options: &[ResolvedOption<'_>], user: &User) -> Str
         serde_json::from_reader(file).expect("Couldn't parse fisting info");
     for info in &mut fisting_info {
         if info.user == fisted_user.name {
-            let delta = Utc::now().time() - info.fisting_defense_data.time();
+            let fisting_defense_data = info.fisting_defense_data.time();
+            info!("Got data {fisting_defense_data} for user {fisted_user:#?}");
+            let delta = Utc::now().time() - fisting_defense_data;
             let delta = delta.num_minutes();
             if delta <= 30 {
                 return format!(
