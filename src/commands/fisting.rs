@@ -38,7 +38,7 @@ pub async fn perform_fisting(options: &[ResolvedOption<'_>], user: &User) -> Str
         if info.user == fisted_user.name {
             let fisting_defense_data = info.fisting_defense_data.time();
             let delta = Utc::now().time() - fisting_defense_data;
-            let delta = delta.num_minutes();
+            let delta = i64::abs(delta.num_minutes());
             if delta <= 30 {
                 info!("Got difference {delta}, can't fist");
                 return format!(
