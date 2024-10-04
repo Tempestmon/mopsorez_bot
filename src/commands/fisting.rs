@@ -37,14 +37,15 @@ pub async fn perform_fisting(options: &[ResolvedOption<'_>], user: &User) -> Str
     for info in &mut fisting_info {
         if info.user == fisted_user.name {
             let fisting_defense_data = info.fisting_defense_data.time();
-            info!("Got data {fisting_defense_data} for user {fisted_user:#?}");
             let delta = Utc::now().time() - fisting_defense_data;
             let delta = delta.num_minutes();
             if delta <= 30 {
+                info!("Got difference {delta}, can't fist");
                 return format!(
                     "{user} не смог профистинговать {fisted_user}, потому что у него стоит защита"
                 );
             }
+            info!("Got difference {delta}, going to fist");
         }
     }
     format!("{user} успешно профистинговал {fisted_user}")
