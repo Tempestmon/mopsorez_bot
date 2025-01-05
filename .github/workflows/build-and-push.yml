@@ -1,0 +1,28 @@
+name: Build and Push Docker Images
+
+on:
+  # push:
+  #   branches:
+  #     - master
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and Push Messenger Image
+      run: |
+        make bot_build
+        make bot_tag
+        make bot_push

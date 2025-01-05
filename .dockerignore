@@ -20,7 +20,7 @@
 **/*.jfm
 **/charts
 **/docker-compose*
-**/compose*
+**/compose.y*ml
 **/Dockerfile*
 **/node_modules
 **/npm-debug.log
@@ -30,5 +30,3 @@
 /target
 LICENSE
 README.md
-/sounds
-local.env
