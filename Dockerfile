@@ -8,6 +8,7 @@ COPY src /app/src
 RUN apt-get update && apt-get install -y \
   musl-dev \
   musl-tools \
+  libopus-dev \
   cmake \
   && rustup target add x86_64-unknown-linux-musl
 
