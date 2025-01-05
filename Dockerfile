@@ -2,8 +2,8 @@ FROM clux/muslrust:1.76.0-stable AS builder
 
 WORKDIR /app
 
-COPY ../messenger/Cargo.toml /app/
-COPY ../src /app/src
+COPY Cargo.toml /app/
+COPY src /app/src
 
 RUN rustup target add x86_64-unknown-linux-musl
 
