@@ -6,7 +6,9 @@ COPY Cargo.toml /app/
 COPY src /app/src
 
 RUN apt-get update && apt-get install -y \
-  musl-dev musl-tools \
+  musl-dev \
+  musl-tools \
+  cmake \
   && rustup target add x86_64-unknown-linux-musl
 
 RUN cargo build --target x86_64-unknown-linux-musl --release
