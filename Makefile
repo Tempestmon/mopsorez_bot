@@ -6,7 +6,7 @@ bot_build:
 	docker build -t $(TENANT)/$(PROJECT):$(BOT_VERSION) -f Dockerfile .
 
 bot_tag:
-	docker tag $(TENANT)/$(PROJECT):$(BOT_VERSION) $(TENANT)/bot:latest
+	docker tag $(TENANT)/$(PROJECT):$(BOT_VERSION) $(TENANT)/$(PROJECT):latest
 
 bot_push: 
 	docker push $(TENANT)/$(PROJECT):$(BOT_VERSION) && docker push $(TENANT)/$(PROJECT):latest
