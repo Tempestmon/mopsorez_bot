@@ -1,46 +1,42 @@
-FROM clux/muslrust:1.81.0-stable AS builder
-WORKDIR /app
-COPY Cargo.toml /app/
-COPY src /app/src
-
-# Устанавливаем необходимые зависимости
+# Stage 1: Base environment
+FROM rust:latest as base
 RUN apt-get update && apt-get install -y \
-  musl-tools \
-  libssl-dev \
   pkg-config \
-  python3 \
-  python3-pip \
-  ffmpeg \
+  libssl-dev \
+  libasound2-dev \
+  cmake \
+  build-essential \
   libopus-dev \
-  libssl-dev
+  && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef
 
-# Устанавливаем yt-dlp
-RUN pip3 install yt-dlp
-
-# Добавляем target для musl и собираем проект
-RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo build --target x86_64-unknown-linux-musl --release
-
-# Второй этап с минимальным образом
-FROM alpine:latest
-
-# Устанавливаем необходимые зависимости для работы
-RUN apk add --no-cache \
-  ca-certificates \
-  python3 \
-  py3-pip \
-  ffmpeg \
-  opus \
-  openssl
-
-# Устанавливаем yt-dlp
-RUN pip3 install yt-dlp
-
-# Создаем директорию для приложения
+# Stage 2: Planning
+FROM base as planner
 WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Копируем исполняемый файл из builder
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/bot /app/bot
+# Stage 3: Caching dependencies
+FROM base as cacher
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
-# Запускаем бота
-CMD ["/app/bot"]
+# Stage 4: Final build
+FROM base as builder
+WORKDIR /app
+COPY . .
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+RUN cargo build --release
+
+# Stage 5: Runtime
+FROM debian:bullseye-slim as runtime
+WORKDIR /app
+RUN apt-get update && apt-get install -y \
+  libasound2 \
+  libopus0 \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/mopsorez_bot /app/mopsorez_bot
+ENV RUST_LOG=info
+ENTRYPOINT ["/app/mopsorez_bot"]
