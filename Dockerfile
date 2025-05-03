@@ -31,7 +31,7 @@ RUN apk add --no-cache \
   py3-pip \
   ffmpeg \
   opus \
-  libssl1.1
+  openssl
 
 # Устанавливаем yt-dlp
 RUN pip3 install yt-dlp
