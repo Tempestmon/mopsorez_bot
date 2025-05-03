@@ -31,11 +31,12 @@ COPY --from=cacher /usr/local/cargo /usr/local/cargo
 RUN cargo build --release
 
 # Stage 5: Runtime
-FROM debian:bullseye-slim as runtime
+FROM debian:bookworm-slim as runtime
 WORKDIR /app
 RUN apt-get update && apt-get install -y \
   libasound2 \
   libopus0 \
+  openssl libssl3 \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/mopsorez_bot /app/mopsorez_bot
 ENV RUST_LOG=info
