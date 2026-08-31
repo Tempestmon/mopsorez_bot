@@ -1,9 +1,8 @@
 use std::fs::read_dir;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serenity::all::{
@@ -17,7 +16,7 @@ use songbird::input::{File, Input, YoutubeDl};
 use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use tracing::{error, info, warn};
 
-use crate::{config::Config, helpers, HttpKey};
+use crate::{config::Config, HttpKey};
 
 pub(crate) struct TrackErrorNotifier;
 
@@ -30,22 +29,32 @@ struct Receiver {
 
 #[derive(Debug)]
 struct InnerReceiver {
-    #[allow(dead_code)]
-    last_tick_was_empty: AtomicBool,
-    #[allow(dead_code)]
-    known_ssrcs: DashMap<u32, UserId>,
-    tick_count: AtomicI64,
-    threshold: AtomicI64,
+    silence_ticks: AtomicI64,
+    cooldown_remaining: AtomicI64,
+    // Config values stored in ticks (1 tick ≈ 20ms)
+    min_silence_ticks: i64,
+    base_cooldown_ticks: i64,
+    cooldown_per_person_ticks: i64,
+    silence_break_ticks: i64,
 }
 
 impl Receiver {
-    pub fn new(guild_id: GuildId, ctx: Context) -> Self {
+    pub fn new(
+        guild_id: GuildId,
+        ctx: Context,
+        min_silence_ticks: i64,
+        base_cooldown_ticks: i64,
+        cooldown_per_person_ticks: i64,
+        silence_break_ticks: i64,
+    ) -> Self {
         Self {
             inner: Arc::new(InnerReceiver {
-                last_tick_was_empty: AtomicBool::default(),
-                known_ssrcs: DashMap::new(),
-                tick_count: Default::default(),
-                threshold: AtomicI64::new(2000),
+                silence_ticks: AtomicI64::new(0),
+                cooldown_remaining: AtomicI64::new(0),
+                min_silence_ticks,
+                base_cooldown_ticks,
+                cooldown_per_person_ticks,
+                silence_break_ticks,
             }),
             guild_id: Some(guild_id),
             ctx: Some(ctx),
@@ -63,26 +72,44 @@ impl VoiceEventHandler for Receiver {
             }
             EventContext::VoiceTick(tick) => {
                 let speaking = tick.speaking.len();
-                let total_participants = speaking + tick.silent.len();
-                if total_participants == 0 {
+                let total = speaking + tick.silent.len();
+                if total == 0 {
                     return None;
                 }
-                let tick_count = self.inner.tick_count.load(Ordering::SeqCst);
-                let threshold = self.inner.threshold.load(Ordering::SeqCst);
-                if tick_count >= threshold {
-                    info!("Participants count is {total_participants}");
-                    if let (Some(ctx), Some(guild_id)) = (&self.ctx, self.guild_id) {
-                        play_random_file(ctx, guild_id).await;
-                    }
-                    self.inner.tick_count.store(0, Ordering::SeqCst);
-                    let random_number = helpers::get_random_number(0, 2000) as usize;
-                    let new_threshold = (random_number * total_participants) as i64;
-                    self.inner.threshold.store(new_threshold, Ordering::SeqCst);
-                    info!(
-                        "Old threshold has been reached. Playing new phrase in {new_threshold}0 ms"
-                    );
+
+                let cooldown = self.inner.cooldown_remaining.load(Ordering::SeqCst);
+                if cooldown > 0 {
+                    self.inner.cooldown_remaining.store(cooldown - 1, Ordering::SeqCst);
                 }
-                self.inner.tick_count.fetch_add(1, Ordering::SeqCst);
+
+                if speaking > 0 {
+                    let silence = self.inner.silence_ticks.load(Ordering::SeqCst);
+                    self.inner.silence_ticks.store(0, Ordering::SeqCst);
+
+                    // React when someone speaks after ≥1 second of silence.
+                    // Short pauses between speakers (< 50 ticks = 1s) are ignored,
+                    // so in multi-person conversations the bot doesn't fire on every breath.
+                    if silence > self.inner.min_silence_ticks && cooldown == 0 {
+                        info!("Speech detected after {silence} ticks of silence, reacting");
+                        if let (Some(ctx), Some(guild_id)) = (&self.ctx, self.guild_id) {
+                            play_random_file(ctx, guild_id).await;
+                        }
+                        let new_cooldown = self.inner.base_cooldown_ticks
+                            + (total as i64 - 1) * self.inner.cooldown_per_person_ticks;
+                        self.inner.cooldown_remaining.store(new_cooldown, Ordering::SeqCst);
+                    }
+                } else {
+                    let silence = self.inner.silence_ticks.fetch_add(1, Ordering::SeqCst) + 1;
+
+                    if silence >= self.inner.silence_break_ticks && cooldown == 0 {
+                        info!("Breaking {silence}-tick silence");
+                        if let (Some(ctx), Some(guild_id)) = (&self.ctx, self.guild_id) {
+                            play_random_file(ctx, guild_id).await;
+                        }
+                        self.inner.silence_ticks.store(0, Ordering::SeqCst);
+                        self.inner.cooldown_remaining.store(self.inner.base_cooldown_ticks, Ordering::SeqCst);
+                    }
+                }
             }
             EventContext::RtpPacket(_) => {}
             EventContext::RtcpPacket(_) => {}
@@ -149,7 +176,18 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
     match manager.join(guild_id, voice_channel_id).await {
         Ok(handler_lock) => {
             let mut handler = handler_lock.lock().await;
-            let evt_receiver = Receiver::new(guild_id, ctx.clone());
+            const TICKS_PER_SEC: i64 = 50; // 1 tick ≈ 20ms
+            let (min_silence, base_cd, cd_per_person, silence_break) = {
+                let data = ctx.data.read().await;
+                let cfg = data.get::<Config>().expect("Config must be in TypeMap");
+                (
+                    cfg.voice_min_silence_secs as i64 * TICKS_PER_SEC,
+                    cfg.voice_cooldown_secs as i64 * TICKS_PER_SEC,
+                    cfg.voice_cooldown_per_person_secs as i64 * TICKS_PER_SEC,
+                    cfg.voice_silence_break_secs as i64 * TICKS_PER_SEC,
+                )
+            };
+            let evt_receiver = Receiver::new(guild_id, ctx.clone(), min_silence, base_cd, cd_per_person, silence_break);
             handler.remove_all_global_events();
             handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
             handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());

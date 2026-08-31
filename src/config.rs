@@ -11,6 +11,21 @@ pub struct Config {
     pub pnh: PathBuf,
     pub otvet: PathBuf,
     pub fisting_data: PathBuf,
+    /// Minimum silence (seconds) before the bot reacts to someone starting to speak.
+    pub voice_min_silence_secs: u64,
+    /// Base cooldown (seconds) between voice reactions.
+    pub voice_cooldown_secs: u64,
+    /// Extra cooldown (seconds) added per participant above 1.
+    pub voice_cooldown_per_person_secs: u64,
+    /// Silence duration (seconds) after which the bot breaks the silence itself.
+    pub voice_silence_break_secs: u64,
+}
+
+fn parse_env_u64(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 impl Config {
@@ -28,6 +43,10 @@ impl Config {
                 env::var("FISTING_DATA_PATH")
                     .unwrap_or_else(|_| "fisting_info.json".to_string()),
             ),
+            voice_min_silence_secs: parse_env_u64("VOICE_MIN_SILENCE_SECS", 1),
+            voice_cooldown_secs: parse_env_u64("VOICE_COOLDOWN_SECS", 10),
+            voice_cooldown_per_person_secs: parse_env_u64("VOICE_COOLDOWN_PER_PERSON_SECS", 5),
+            voice_silence_break_secs: parse_env_u64("VOICE_SILENCE_BREAK_SECS", 30),
         }
     }
 }
