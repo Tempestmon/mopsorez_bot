@@ -46,7 +46,7 @@ default-features = false
 
 [dependencies.songbird]
 version = "0.6"
-features = ["serenity", "driver", "gateway", "receive", "builtin-queue", "tungstenite"]
+features = ["serenity", "driver", "gateway", "receive", "builtin-queue", "tungstenite", "rustls"]
 default-features = false
 
 [dependencies.symphonia]
