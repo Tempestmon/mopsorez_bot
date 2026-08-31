@@ -1,0 +1,11 @@
+services:
+  bot:
+    image: tempestmon/mopsorez_bot:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./sounds:/app/sounds:ro
+      - bot_data:/app/data
+
+volumes:
+  bot_data:

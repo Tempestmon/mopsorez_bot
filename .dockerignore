@@ -28,5 +28,9 @@
 **/values.dev.yaml
 /bin
 /target
+/sounds
+/data
+local.env
+fisting_info.json
 LICENSE
 README.md

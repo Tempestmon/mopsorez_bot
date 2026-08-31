@@ -1,0 +1,19 @@
+stages:
+  - build
+
+build-and-push:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
+  script:
+    - make bot_build
+    - make bot_tag
+    - make bot_push
+  rules:
+    - changes:
+        - Cargo.toml
+        - Cargo.lock
+        - src/**/*

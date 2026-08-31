@@ -23,8 +23,11 @@ impl JsonFistingRepository {
 
 impl FistingRepository for JsonFistingRepository {
     fn load(&self) -> Result<Vec<FistingInfo>, BotError> {
-        let file = std::fs::File::open(&self.path)?;
-        Ok(serde_json::from_reader(file)?)
+        match std::fs::File::open(&self.path) {
+            Ok(file) => Ok(serde_json::from_reader(file)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(BotError::Io(e)),
+        }
     }
 
     fn save(&self, data: &[FistingInfo]) -> Result<(), BotError> {

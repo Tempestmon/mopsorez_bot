@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use reqwest::Client as HttpClient;
@@ -136,9 +135,10 @@ async fn main() {
 
     let bot_config = Config::from_env();
     let token = bot_config.discord_token.clone();
+    let fisting_data_path = bot_config.fisting_data.clone();
 
     let fisting_repo: Arc<dyn infrastructure::fisting_repository::FistingRepository> =
-        Arc::new(JsonFistingRepository::new(PathBuf::from("fisting_info.json")));
+        Arc::new(JsonFistingRepository::new(fisting_data_path));
 
     let songbird_config = SongbirdConfig::default().decode_mode(DecodeMode::Decode);
     let mut client = Client::builder(&token, GatewayIntents::privileged())

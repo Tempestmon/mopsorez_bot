@@ -10,6 +10,7 @@ pub struct Config {
     pub hooli: PathBuf,
     pub pnh: PathBuf,
     pub otvet: PathBuf,
+    pub fisting_data: PathBuf,
 }
 
 impl Config {
@@ -23,6 +24,10 @@ impl Config {
             hooli: PathBuf::from(env::var("HOOLI").expect("HOOLI must be set")),
             pnh: PathBuf::from(env::var("PNH").expect("PNH must be set")),
             otvet: PathBuf::from(env::var("OTVET").expect("OTVET must be set")),
+            fisting_data: PathBuf::from(
+                env::var("FISTING_DATA_PATH")
+                    .unwrap_or_else(|_| "fisting_info.json".to_string()),
+            ),
         }
     }
 }
