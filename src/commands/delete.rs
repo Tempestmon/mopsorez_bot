@@ -3,12 +3,14 @@ use serenity::all::{
     GuildId, ResolvedOption, ResolvedValue,
 };
 
+use crate::error::BotError;
+
 pub async fn delete_messages(
     options: &[ResolvedOption<'_>],
     ctx: &Context,
     guild_id: GuildId,
     channel_id: &ChannelId,
-) -> String {
+) -> Result<String, BotError> {
     let number = options
         .first()
         .expect("No number was provided")
@@ -19,29 +21,25 @@ pub async fn delete_messages(
         _ => 0,
     };
     if number >= 10 {
-        return String::from("Слишком дохуя ты решил удалить");
+        return Ok(String::from("Слишком дохуя ты решил удалить"));
     }
     if number <= 0 {
-        return String::from("Нельзя удалить 0 сообщений, дебил");
+        return Ok(String::from("Нельзя удалить 0 сообщений, дебил"));
     }
-    let guild = guild_id
-        .to_guild_cached(&ctx.cache)
-        .expect("Guild cannot be found")
-        .clone();
-    let channel = guild
-        .channels
-        .get(channel_id)
-        .expect("Channel is not found");
+    // GuildRef from to_guild_cached is !Send — drop it before any .await
+    let channel_opt = {
+        let Some(guild) = guild_id.to_guild_cached(&ctx.cache) else {
+            return Ok("Гильдия не найдена".to_string());
+        };
+        guild.channels.get(channel_id).cloned()
+    };
+    let Some(channel) = channel_opt else {
+        return Ok("Канал не найден".to_string());
+    };
     let builder = GetMessages::new().limit(number as u8);
-    let messages = channel
-        .messages(&ctx.http, builder)
-        .await
-        .expect("No messages found");
-    channel
-        .delete_messages(&ctx.http, messages.into_iter())
-        .await
-        .expect("Got an error deleting messages");
-    format!("Сообщения удалены, их количество: {number}")
+    let messages = channel.messages(&ctx.http, builder).await?;
+    channel.delete_messages(&ctx.http, messages.into_iter()).await?;
+    Ok(format!("Сообщения удалены, их количество: {number}"))
 }
 
 pub fn register() -> CreateCommand {

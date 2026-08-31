@@ -1,10 +1,12 @@
 use rand::seq::SliceRandom;
 use reqwest::Response;
 use serde::{Deserialize, Serialize};
-use serde_json::Error;
 use serenity::all::{
     CommandOptionType, CreateCommand, CreateCommandOption, ResolvedOption, ResolvedValue,
 };
+use tracing::info;
+
+use crate::error::BotError;
 
 struct Rule34Parameters {
     url: String,
@@ -40,30 +42,26 @@ struct Rule34Model {
     file_url: String,
 }
 
-pub async fn find_image(options: &[ResolvedOption<'_>]) -> String {
+pub async fn find_image(options: &[ResolvedOption<'_>]) -> Result<String, BotError> {
     let tag = options.first().expect("No tag was provided").clone().value;
     let tag = match tag {
-        ResolvedValue::String(s) => Ok(s),
-        _ => Err("Not a string"),
+        ResolvedValue::String(s) => s,
+        _ => panic!("Expected a string option"),
     };
-    println!("tag is {tag:?}");
+    info!("tag is {tag:?}");
     let request_parameters =
-        Rule34Parameters::new(true, 50, vec![tag.expect("No tags found").to_string()]);
-    let response = request_parameters
-        .make_request()
-        .await
-        .expect("Got error receiving response");
-    let response = response.text().await.expect("Got error converting to text");
-    if response.is_empty() {
-        return String::from("Такой хуйни я найти не могу");
+        Rule34Parameters::new(true, 50, vec![tag.to_string()]);
+    let response = request_parameters.make_request().await?;
+    let body = response.text().await?;
+    if body.is_empty() {
+        return Ok(String::from("Такой хуйни я найти не могу"));
     }
-    let images: Result<Vec<Rule34Model>, Error> = serde_json::from_str(&*response);
-    let images = images.expect("Got error parsing response");
-    images
+    let images: Vec<Rule34Model> = serde_json::from_str(&body)?;
+    let url = images
         .choose(&mut rand::thread_rng())
-        .expect("Couldn't choose random")
-        .file_url
-        .clone()
+        .map(|m| m.file_url.clone())
+        .unwrap_or_else(|| "Такой хуйни я найти не могу".to_string());
+    Ok(url)
 }
 
 pub fn register() -> CreateCommand {

@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::read_dir;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -18,7 +17,7 @@ use songbird::input::{File, Input, YoutubeDl};
 use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use tracing::{error, info, warn};
 
-use crate::{helpers, HttpKey};
+use crate::{config::Config, helpers, HttpKey};
 
 pub(crate) struct TrackErrorNotifier;
 
@@ -72,7 +71,9 @@ impl VoiceEventHandler for Receiver {
                 let threshold = self.inner.threshold.load(Ordering::SeqCst);
                 if tick_count >= threshold {
                     info!("Participants count is {total_participants}");
-                    play_random_file(&self.ctx.clone().unwrap(), self.guild_id.unwrap()).await;
+                    if let (Some(ctx), Some(guild_id)) = (&self.ctx, self.guild_id) {
+                        play_random_file(ctx, guild_id).await;
+                    }
                     self.inner.tick_count.store(0, Ordering::SeqCst);
                     let random_number = helpers::get_random_number(0, 2000) as usize;
                     let new_threshold = (random_number * total_participants) as i64;
@@ -83,12 +84,8 @@ impl VoiceEventHandler for Receiver {
                 }
                 self.inner.tick_count.fetch_add(1, Ordering::SeqCst);
             }
-            EventContext::RtpPacket(_) => {
-                // println!("Rtp packet")
-            }
-            EventContext::RtcpPacket(_) => {
-                // println!("rtcp packet")
-            }
+            EventContext::RtpPacket(_) => {}
+            EventContext::RtcpPacket(_) => {}
             EventContext::ClientDisconnect(_) => {}
             EventContext::DriverConnect(_) => {}
             EventContext::DriverReconnect(_) => {}
@@ -113,49 +110,55 @@ impl VoiceEventHandler for TrackErrorNotifier {
                 );
             }
         }
-
         None
     }
 }
 
-fn get_music_file() -> PathBuf {
-    let music_directory =
-        env::var("PHRASES_DIRECTORY").expect("Expected a directory in the environment");
-    let mut music_files: Vec<_> = read_dir(music_directory)
-        .expect("Failed to read music directory")
-        .map(|entry| entry.expect("No entries").path())
+fn get_music_file(phrases_directory: &PathBuf) -> Option<PathBuf> {
+    let mut music_files: Vec<_> = read_dir(phrases_directory)
+        .ok()?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
         .collect();
-    let mut rng = thread_rng();
-    music_files.shuffle(&mut rng);
-    music_files[0].clone()
+    if music_files.is_empty() {
+        return None;
+    }
+    music_files.shuffle(&mut thread_rng());
+    Some(music_files[0].clone())
 }
 
 pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String {
-    let guild = guild_id
-        .to_guild_cached(&ctx.cache)
-        .expect("No cached guild")
-        .clone();
-    let voice_channel_id = guild
-        .voice_states
-        .get(user_id)
-        .and_then(|voice_state| voice_state.channel_id);
-    let voice_channel_id = match voice_channel_id {
-        Some(v) => v,
-        None => return "Ты должен быть в голосовом канале".to_string(),
+    // Ref from cache must be dropped before any .await — keep it in a block
+    let voice_channel_id = {
+        match guild_id.to_guild_cached(&ctx.cache) {
+            Some(guild) => guild.voice_states.get(user_id).and_then(|vs| vs.channel_id),
+            None => {
+                error!("Guild {guild_id} not found in cache");
+                return "Гильдия не найдена".to_string();
+            }
+        }
+    };
+    let Some(voice_channel_id) = voice_channel_id else {
+        return "Ты должен быть в голосовом канале".to_string();
     };
     let manager = songbird::get(ctx)
         .await
-        .expect("Cannot register songbird manager")
+        .expect("Songbird not registered")
         .clone();
-    if let Ok(handler_lock) = manager.join(guild_id, voice_channel_id).await {
-        let mut handler = handler_lock.lock().await;
-        let evt_receiver = Receiver::new(guild_id, ctx.clone());
-        handler.remove_all_global_events();
-        handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
-        handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
-        handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
-        handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
-        handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
+    match manager.join(guild_id, voice_channel_id).await {
+        Ok(handler_lock) => {
+            let mut handler = handler_lock.lock().await;
+            let evt_receiver = Receiver::new(guild_id, ctx.clone());
+            handler.remove_all_global_events();
+            handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
+            handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
+            handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
+            handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
+            handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
+        }
+        Err(e) => {
+            error!("Failed to join voice channel: {e}");
+            return "Не удалось присоединиться к каналу".to_string();
+        }
     }
     info!("Joined channel");
     "Я тут. Чё надо?".to_string()
@@ -175,14 +178,14 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
 
     let manager = songbird::get(ctx)
         .await
-        .expect("Songbird Voice client placed in at initialisation.")
+        .expect("Songbird not registered")
         .clone();
 
     let http_client = {
         let data = ctx.data.read().await;
         data.get::<HttpKey>()
             .cloned()
-            .expect("Guaranteed to exist in the typemap.")
+            .expect("HttpClient not in TypeMap")
     };
 
     if let Some(handler_lock) = manager.get(guild_id) {
@@ -192,10 +195,9 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
         } else {
             YoutubeDl::new(http_client, url.clone())
         };
-        handler
-            .play_input(src.clone().into())
-            .set_volume(0.1)
-            .expect("Could not set volume");
+        if let Err(e) = handler.play_input(src.into()).set_volume(0.1) {
+            error!("Could not set volume: {e}");
+        }
         info!("Playing video from {url}");
         format!("Играем {url}")
     } else {
@@ -206,13 +208,12 @@ pub async fn play(options: &[ResolvedOption<'_>], ctx: &Context, guild_id: Guild
 pub async fn play_file(ctx: &Context, guild_id: GuildId, path: PathBuf) -> String {
     let manager = songbird::get(ctx)
         .await
-        .expect("Songbird Voice client placed in at initialisation.")
+        .expect("Songbird not registered")
         .clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        let file_path = File::new(path.clone());
-        let src = Input::from(file_path);
+        let src = Input::from(File::new(path.clone()));
         handler.enqueue(src.into()).await;
         info!("Added song {path:#?} to queue");
         "Играем".to_string()
@@ -222,8 +223,20 @@ pub async fn play_file(ctx: &Context, guild_id: GuildId, path: PathBuf) -> Strin
 }
 
 pub async fn play_random_file(ctx: &Context, guild_id: GuildId) -> String {
-    let path = get_music_file();
-    play_file(ctx, guild_id, path).await
+    let phrases_directory = {
+        let data = ctx.data.read().await;
+        data.get::<Config>()
+            .expect("Config must be in TypeMap")
+            .phrases_directory
+            .clone()
+    };
+    match get_music_file(&phrases_directory) {
+        Some(path) => play_file(ctx, guild_id, path).await,
+        None => {
+            error!("No music files found in {:?}", phrases_directory);
+            "Нет файлов для воспроизведения".to_string()
+        }
+    }
 }
 
 pub fn register_play() -> CreateCommand {

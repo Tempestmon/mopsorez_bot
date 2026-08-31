@@ -1,11 +1,12 @@
 use rand::distributions::{Distribution, Uniform};
 use serenity::all::{Context, Message};
+use tracing::{error, info};
 
 pub async fn send_discord_message(ctx: &Context, msg: &Message, message: &str) {
     if let Err(why) = msg.channel_id.say(&ctx.http, message).await {
-        println!("Error sending message: {why:?}");
+        error!("Error sending message: {why:?}");
     }
-    println!("Senging message: {message:#?}")
+    info!("Sending message: {message:#?}")
 }
 
 pub fn get_random_number(from: u16, to: u16) -> u16 {
