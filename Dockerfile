@@ -38,7 +38,6 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libasound2 \
     libopus0 \
-    libssl3 \
     wget \
     && wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
        -O /usr/local/bin/yt-dlp \

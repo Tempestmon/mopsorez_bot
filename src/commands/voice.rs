@@ -144,6 +144,8 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
         .await
         .expect("Songbird not registered")
         .clone();
+    // Remove any stale/failed call before joining to avoid state corruption
+    let _ = manager.remove(guild_id).await;
     match manager.join(guild_id, voice_channel_id).await {
         Ok(handler_lock) => {
             let mut handler = handler_lock.lock().await;

@@ -46,8 +46,8 @@ default-features = false
 
 [dependencies.songbird]
 version = "0.4.1"
-features = ["receive", "driver", "builtin-queue"]
-default-features = true
+features = ["serenity", "driver", "gateway", "receive", "builtin-queue", "rustls"]
+default-features = false
 
 [dependencies.symphonia]
 version = "0.5.4"
