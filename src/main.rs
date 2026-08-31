@@ -5,6 +5,7 @@ use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::channel::Message;
+use serenity::model::event::VoiceServerUpdateEvent;
 use serenity::model::gateway::Ready;
 use serenity::model::voice::VoiceState;
 use serenity::all::Reaction;
@@ -65,6 +66,10 @@ impl EventHandler for Handler {
             )
             .await
             .expect("failed to create application command");
+    }
+
+    async fn voice_server_update(&self, _ctx: Context, update: VoiceServerUpdateEvent) {
+        info!("Voice server endpoint assigned: {}", update.endpoint.as_deref().unwrap_or("none"));
     }
 
     async fn voice_state_update(
@@ -130,7 +135,13 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let subscriber = tracing_subscriber::fmt().with_target(false).finish();
+    let subscriber = tracing_subscriber::fmt()
+        .with_target(false)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .finish();
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber.");
 
     let bot_config = Config::from_env();
