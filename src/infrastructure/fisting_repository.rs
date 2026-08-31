@@ -31,6 +31,9 @@ impl FistingRepository for JsonFistingRepository {
     }
 
     fn save(&self, data: &[FistingInfo]) -> Result<(), BotError> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         let mut file = std::fs::File::create(&self.path)?;
         serde_json::to_writer_pretty(&mut file, data)?;
         Ok(())

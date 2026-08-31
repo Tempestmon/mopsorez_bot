@@ -141,7 +141,10 @@ async fn main() {
         Arc::new(JsonFistingRepository::new(fisting_data_path));
 
     let songbird_config = SongbirdConfig::default().decode_mode(DecodeMode::Decode);
-    let mut client = Client::builder(&token, GatewayIntents::privileged())
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::GUILD_MEMBERS
+        | GatewayIntents::MESSAGE_CONTENT;
+    let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
         .register_songbird_from_config(songbird_config)
         .type_map_insert::<HttpKey>(HttpClient::new())
