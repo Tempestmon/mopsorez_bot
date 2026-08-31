@@ -45,7 +45,7 @@ features = ["client", "gateway", "model", "rustls_backend", "framework", "standa
 default-features = false
 
 [dependencies.songbird]
-version = "0.4"
+version = "0.6"
 features = ["serenity", "driver", "gateway", "receive", "builtin-queue", "rustls"]
 default-features = false
 
