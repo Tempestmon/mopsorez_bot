@@ -10,7 +10,7 @@ use serenity::model::gateway::Ready;
 use serenity::model::voice::VoiceState;
 use serenity::all::Reaction;
 use serenity::prelude::*;
-use songbird::driver::DecodeMode;
+use songbird::driver::{DecodeConfig, DecodeMode};
 use songbird::{Config as SongbirdConfig, SerenityInit};
 use tracing::{error, info};
 
@@ -151,7 +151,7 @@ async fn main() {
     let fisting_repo: Arc<dyn infrastructure::fisting_repository::FistingRepository> =
         Arc::new(JsonFistingRepository::new(fisting_data_path));
 
-    let songbird_config = SongbirdConfig::default().decode_mode(DecodeMode::Decode);
+    let songbird_config = SongbirdConfig::default().decode_mode(DecodeMode::Decode(DecodeConfig::default()));
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::GUILD_MEMBERS
         | GatewayIntents::MESSAGE_CONTENT;
