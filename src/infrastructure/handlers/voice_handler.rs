@@ -19,6 +19,9 @@ pub async fn handle_voice_state_update(
         let Some(old_channel_id) = old_st.channel_id else { return Ok(()) };
         let Some(old_guild_id) = old_st.guild_id else { return Ok(()) };
         let Some(old_member) = old_st.member else { return Ok(()) };
+        if old_member.user.bot {
+            return Ok(());
+        }
         let channel_opt = {
             ctx.cache
                 .guild(old_guild_id)

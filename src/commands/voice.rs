@@ -2,12 +2,13 @@ use std::fs::read_dir;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serenity::all::{
-    CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption, ResolvedValue,
-    UserId,
+    ChannelId, CommandOptionType, CreateCommand, CreateCommandOption, GuildId, ResolvedOption,
+    ResolvedValue, UserId,
 };
 use serenity::async_trait;
 use serenity::prelude::Context;
@@ -24,6 +25,7 @@ pub(crate) struct TrackErrorNotifier;
 struct Receiver {
     inner: Arc<InnerReceiver>,
     guild_id: Option<GuildId>,
+    channel_id: Option<ChannelId>,
     ctx: Option<Context>,
 }
 
@@ -41,6 +43,7 @@ struct InnerReceiver {
 impl Receiver {
     pub fn new(
         guild_id: GuildId,
+        channel_id: ChannelId,
         ctx: Context,
         min_silence_ticks: i64,
         base_cooldown_ticks: i64,
@@ -57,6 +60,7 @@ impl Receiver {
                 silence_break_ticks,
             }),
             guild_id: Some(guild_id),
+            channel_id: Some(channel_id),
             ctx: Some(ctx),
         }
     }
@@ -116,7 +120,58 @@ impl VoiceEventHandler for Receiver {
             EventContext::ClientDisconnect(_) => {}
             EventContext::DriverConnect(_) => {}
             EventContext::DriverReconnect(_) => {}
-            EventContext::DriverDisconnect(_) => {}
+            EventContext::DriverDisconnect(_) => {
+                if let (Some(ctx), Some(guild_id), Some(channel_id)) =
+                    (&self.ctx, self.guild_id, self.channel_id)
+                {
+                    let ctx = ctx.clone();
+                    let receiver = self.clone();
+                    tokio::spawn(async move {
+                        // Wait for any concurrent join() to complete before deciding to rejoin
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        let manager = match songbird::get(&ctx).await {
+                            Some(m) => m,
+                            None => {
+                                error!("Songbird not in context, cannot auto-rejoin");
+                                return;
+                            }
+                        };
+                        if manager.get(guild_id).is_some() {
+                            return; // Already reconnected by someone else
+                        }
+                        warn!("Auto-rejoining channel {channel_id} after driver disconnect");
+                        match manager.join(guild_id, channel_id).await {
+                            Ok(handler_lock) => {
+                                let mut handler = handler_lock.lock().await;
+                                handler.remove_all_global_events();
+                                handler.add_global_event(
+                                    CoreEvent::SpeakingStateUpdate.into(),
+                                    receiver.clone(),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::RtpPacket.into(),
+                                    receiver.clone(),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::RtcpPacket.into(),
+                                    receiver.clone(),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::VoiceTick.into(),
+                                    receiver.clone(),
+                                );
+                                handler.add_global_event(
+                                    CoreEvent::DriverDisconnect.into(),
+                                    receiver,
+                                );
+                                handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
+                                info!("Auto-rejoin complete, events re-registered");
+                            }
+                            Err(e) => error!("Auto-rejoin failed: {e}"),
+                        }
+                    });
+                }
+            }
             _ => {
                 warn!("нихуя")
             }
@@ -187,12 +242,13 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
                     cfg.voice_silence_break_secs as i64 * TICKS_PER_SEC,
                 )
             };
-            let evt_receiver = Receiver::new(guild_id, ctx.clone(), min_silence, base_cd, cd_per_person, silence_break);
+            let evt_receiver = Receiver::new(guild_id, voice_channel_id, ctx.clone(), min_silence, base_cd, cd_per_person, silence_break);
             handler.remove_all_global_events();
             handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), evt_receiver.clone());
             handler.add_global_event(CoreEvent::RtpPacket.into(), evt_receiver.clone());
             handler.add_global_event(CoreEvent::RtcpPacket.into(), evt_receiver.clone());
-            handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver);
+            handler.add_global_event(CoreEvent::VoiceTick.into(), evt_receiver.clone());
+            handler.add_global_event(CoreEvent::DriverDisconnect.into(), evt_receiver);
             handler.add_global_event(TrackEvent::Error.into(), TrackErrorNotifier);
         }
         Err(e) => {
