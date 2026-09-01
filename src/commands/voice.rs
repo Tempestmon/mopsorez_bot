@@ -127,7 +127,6 @@ impl VoiceEventHandler for Receiver {
                     let ctx = ctx.clone();
                     let receiver = self.clone();
                     tokio::spawn(async move {
-                        // Wait for any concurrent join() to complete before deciding to rejoin
                         tokio::time::sleep(Duration::from_secs(5)).await;
                         let manager = match songbird::get(&ctx).await {
                             Some(m) => m,
@@ -136,10 +135,10 @@ impl VoiceEventHandler for Receiver {
                                 return;
                             }
                         };
-                        if manager.get(guild_id).is_some() {
-                            return; // Already reconnected by someone else
-                        }
                         warn!("Auto-rejoining channel {channel_id} after driver disconnect");
+                        // Clean up dead call before creating a fresh one
+                        let _ = manager.remove(guild_id).await;
+                        tokio::time::sleep(Duration::from_millis(500)).await;
                         match manager.join(guild_id, channel_id).await {
                             Ok(handler_lock) => {
                                 let mut handler = handler_lock.lock().await;
@@ -226,8 +225,6 @@ pub async fn join(ctx: &Context, guild_id: GuildId, user_id: &UserId) -> String 
         .await
         .expect("Songbird not registered")
         .clone();
-    // Remove any stale/failed call before joining to avoid state corruption
-    let _ = manager.remove(guild_id).await;
     match manager.join(guild_id, voice_channel_id).await {
         Ok(handler_lock) => {
             let mut handler = handler_lock.lock().await;
